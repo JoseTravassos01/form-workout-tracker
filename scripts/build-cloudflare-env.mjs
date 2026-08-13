@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, URL } from "node:url";
 
 const environment = process.argv[2];
 
