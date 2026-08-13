@@ -1,0 +1,22 @@
+import { Activity, ArrowLeft, BatteryCharging, Check, CircleAlert, Moon, ShieldAlert, Sparkles } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
+import { useToast } from "../../app/ToastProvider";
+import { Button, Card, PageHeader, StatusPill } from "../../components/ui";
+import { apiMutation } from "../../lib/api";
+
+const questions = [
+  ["performanceDropped", "A performance caiu?", "Compare sessões semelhantes, não apenas um dia isolado.", Activity],
+  ["poorSleep", "O sono piorou?", "Considere a qualidade recente, não uma noite pontual.", Moon],
+  ["persistentSoreness", "A dor muscular ainda interfere?", "Especialmente se persistir até a próxima sessão.", BatteryCharging],
+  ["jointPain", "Existe dor articular ou localizada?", "A aplicação apenas registra; não faz diagnóstico.", ShieldAlert],
+  ["lowMotivation", "A motivação está marcadamente baixa?", "Uma mudança clara em relação ao seu normal.", Sparkles],
+  ["highFatigue", "As cargas parecem anormalmente pesadas?", "Sensação de fadiga acima do esperado.", CircleAlert],
+  ["rirLoss", "Houve perda inesperada de ~2 RIR?", "Nas mesmas cargas habituais.", Activity],
+] as const;
+type AnswerKey = typeof questions[number][0];
+export function CheckInPage() {
+  const navigate = useNavigate(); const { show } = useToast(); const [answers, setAnswers] = useState<Record<AnswerKey, boolean>>({ performanceDropped: false, poorSleep: false, persistentSoreness: false, jointPain: false, lowMotivation: false, highFatigue: false, rirLoss: false }); const [sessions, setSessions] = useState(0); const [notes, setNotes] = useState(""); const [result, setResult] = useState<{ status: string; recommendation: string } | null>(null); const [loading, setLoading] = useState(false);
+  const submit = async (event: FormEvent) => { event.preventDefault(); setLoading(true); try { const response = await apiMutation<{ status: string; recommendation: string }>("/api/recovery-checkins", "POST", { ...answers, performanceDropSessions: answers.performanceDropped ? sessions : 0, notes }); setResult(response); show("Check-in registrado.", "success"); } catch (error) { show(error instanceof Error ? error.message : "Não foi possível registrar.", "error"); } finally { setLoading(false); } };
+  return <div className="page-stack checkin-page"><button className="back-link" onClick={() => navigate(-1)}><ArrowLeft /> Voltar</button><PageHeader eyebrow="AUTORREGULAÇÃO" title="Check-in semanal" /><Card className="checkin-intro"><BatteryCharging /><div><h2>Como você está recuperando?</h2><p>Responda com base na última semana. Isso não é avaliação médica; é uma ferramenta operacional do programa.</p></div></Card>{result ? <Card className={`checkin-result result-${result.status}`}><StatusPill status={result.status} /><h2>{result.status === "green" ? "Recuperação adequada" : result.status === "yellow" ? "Atenção à recuperação" : result.status === "pain" ? "Dor registrada" : "Sinais de fadiga acumulada"}</h2><p>{result.recommendation}</p><Button variant="secondary" onClick={() => setResult(null)}>REVISAR RESPOSTAS</Button></Card> : <form onSubmit={(event) => void submit(event)}><div className="question-list">{questions.map(([key, title, text, Icon]) => <Card key={key} className={answers[key] ? "answered-yes" : ""}><Icon /><div><h3>{title}</h3><p>{text}</p></div><div className="binary-toggle"><button type="button" className={!answers[key] ? "active" : ""} onClick={() => setAnswers({ ...answers, [key]: false })}>Não</button><button type="button" className={answers[key] ? "active" : ""} onClick={() => setAnswers({ ...answers, [key]: true })}>Sim</button></div></Card>)}</div>{answers.performanceDropped && <Card className="followup-question"><label>Em quantas sessões comparáveis a queda ocorreu?<div className="session-count">{[1, 2, 3, 4].map((value) => <button type="button" className={sessions === value ? "active" : ""} key={value} onClick={() => setSessions(value)}>{value}{value === 4 ? "+" : ""}</button>)}</div></label></Card>}<label className="notes-field">Observação opcional<textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Registre contexto sem interpretação clínica." /></label><Button type="submit" className="checkin-submit" loading={loading} disabled={answers.performanceDropped && sessions === 0}><Check /> AVALIAR RECUPERAÇÃO</Button></form>}</div>;
+}

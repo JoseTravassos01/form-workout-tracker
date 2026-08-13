@@ -1,0 +1,50 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "form-workout-tracker",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-08-13",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "form-workout-tracker-prod-db",
+      "database_id": "85f2973e-9e11-430c-837b-17d2b27c542e",
+      "migrations_dir": "./migrations"
+    }
+  ],
+  "vars": {
+    "APP_ENV": "production",
+    "SESSION_TTL_DAYS": "14"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.1
+    }
+  },
+  "env": {
+    "dev": {
+      "name": "form-workout-tracker-dev",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "form-workout-tracker-dev-db",
+          "database_id": "df79c78e-3c3f-4597-87dc-5449e15e8dc0",
+          "migrations_dir": "./migrations"
+        }
+      ],
+      "vars": {
+        "APP_ENV": "development",
+        "SESSION_TTL_DAYS": "14"
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+import { ArrowRight, Check, ChevronRight, Circle, Flag, Layers3, Pencil, X } from "lucide-react";
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { Button, Card, PageHeader, Skeleton } from "../../components/ui";
+import { useApi } from "../../lib/use-api";
+import { apiMutation } from "../../lib/api";
+import { useToast } from "../../app/ToastProvider";
+
+interface ProgramDto { program: { id: string; name: string; description: string; sourceResearch: string; version: string }; state: { currentWeek: number; currentBlock: number; manualOverride: boolean; version: number }; blocks: Array<{ id: string; blockNumber: number; name: string; startWeek: number; endWeek: number; objective: string; description: string; differences: string; volumeSummary: string }> }
+
+export function ProgramPage() {
+  const { data, loading, refresh } = useApi<ProgramDto>("/api/program"); const { show } = useToast(); const [editing, setEditing] = useState(false); const [week, setWeek] = useState(1); const [reason, setReason] = useState(""); const [saving, setSaving] = useState(false);
+  if (loading || !data) return <div className="page-stack"><Skeleton className="program-hero-skeleton" />{[1, 2, 3, 4].map((item) => <Skeleton className="block-skeleton" key={item} />)}</div>;
+  return <div className="page-stack program-page">
+    <PageHeader eyebrow="52 SEMANAS · 4 BLOCOS" title="Seu programa" action={<Button variant="secondary" onClick={() => { setWeek(data.state.currentWeek); setEditing(true); }}><Pencil /> ALTERAR SEMANA</Button>} />
+    <Card className="program-hero"><div className="program-icon"><Layers3 /></div><div><span>PROGRAMA ATIVO · V{data.program.version}</span><h2>{data.program.name}</h2><p>{data.program.description}</p></div><div className="program-week"><strong>{data.state.currentWeek}</strong><small>SEMANA<br />DE 52</small></div></Card>
+    <div className="annual-progress"><div><span>Início</span><strong>{Math.round(data.state.currentWeek / 52 * 100)}% do programa</strong><span>52 semanas</span></div><div><span style={{ width: `${data.state.currentWeek / 52 * 100}%` }} /></div></div>
+    <section className="block-timeline">{data.blocks.map((block) => { const current = block.blockNumber === data.state.currentBlock; const done = block.blockNumber < data.state.currentBlock; return <div className={`timeline-item ${current ? "current" : ""} ${done ? "done" : ""}`} key={block.id}><div className="timeline-marker">{done ? <Check /> : current ? <Flag /> : <Circle />}</div><Card className="block-card"><div className="block-top"><div><span>BLOCO {block.blockNumber}</span><small>Semanas {block.startWeek}–{block.endWeek}</small></div>{current && <em>ATUAL</em>}</div><h2>{block.name}</h2><p>{block.objective}</p><div className="volume-summary">{block.volumeSummary}</div><Link to={`/app/program/${encodeURIComponent(block.id)}`}>EXPLORAR BLOCO <ArrowRight /></Link></Card></div>; })}</section>
+    <Card className="science-callout"><div><span>BASE CIENTÍFICA</span><h3>Por que o programa evolui em blocos?</h3><p>Os blocos ajustam dose, ênfase e fadiga sem trocar exercícios aleatoriamente.</p></div><Link to="/app/science" aria-label="Ver ciência"><ChevronRight /></Link></Card>
+    {editing && <div className="modal-layer" role="dialog" aria-modal="true"><button className="modal-backdrop" onClick={() => setEditing(false)} /><Card className="week-modal"><button className="modal-close" onClick={() => setEditing(false)}><X /></button><span className="eyebrow">ALTERAÇÃO MANUAL</span><h2>Ir para a semana {week}?</h2><p>Alterar a semana pode modificar os treinos exibidos. A mudança ficará registrada.</p><label>Semana<input type="range" min="1" max="52" value={week} onChange={(event) => setWeek(Number(event.target.value))} /><strong>{week} / 52</strong></label><label>Motivo<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Por que a semana precisa mudar?" /></label><Button loading={saving} disabled={reason.trim().length < 3} onClick={() => { setSaving(true); void apiMutation("/api/program/state", "PATCH", { currentWeek: week, reason, version: data.state.version, confirmed: true }).then(async () => { show("Semana atualizada e alteração registrada.", "success"); setEditing(false); await refresh(); }).catch((error: unknown) => show(error instanceof Error ? error.message : "Não foi possível alterar.", "error")).finally(() => setSaving(false)); }}>SIM, ALTERAR SEMANA</Button></Card></div>}
+  </div>;
+}

@@ -1,0 +1,26 @@
+export type SecretBindings = {
+  SEED_SECRET?: string;
+  MALE_USERNAME?: string;
+  MALE_PASSWORD?: string;
+  MALE_DISPLAY_NAME?: string;
+  MALE_PROGRAM_START_DATE?: string;
+  FEMALE_USERNAME?: string;
+  FEMALE_PASSWORD?: string;
+  FEMALE_DISPLAY_NAME?: string;
+  FEMALE_PROGRAM_START_DATE?: string;
+};
+
+export type AppBindings = Env & SecretBindings;
+
+export type AuthenticatedVariables = {
+  requestId: string;
+  userId: string;
+  athleteProfileId: string;
+  sessionId: string;
+  profileSex: "male" | "female";
+};
+
+export type AppEnvironment = {
+  Bindings: AppBindings;
+  Variables: AuthenticatedVariables;
+};

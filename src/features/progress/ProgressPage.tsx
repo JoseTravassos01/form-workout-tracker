@@ -1,0 +1,7 @@
+import { Activity, ArrowRight, Dumbbell, Ruler, Scale, TrendingUp } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Card, PageHeader } from "../../components/ui";
+
+export function ProgressPage() {
+  return <div className="page-stack progress-page"><PageHeader eyebrow="EVOLUÇÃO" title="Progresso" /><div className="progress-hero"><span>SEUS DADOS, SEM RUÍDO</span><h2>Observe tendências.<br />Não um único dia.</h2><p>Peso, medidas e performance são acompanhados sem transformar flutuações em conclusões.</p><TrendingUp /></div><div className="progress-choice-grid"><Link to="/app/progress/body"><Card><div className="choice-icon"><Scale /></div><span>CORPO</span><h2>Peso e medidas</h2><p>Média semanal, cintura, quadril, coxa, panturrilha e outras medidas.</p><strong>ABRIR <ArrowRight /></strong></Card></Link><Link to="/app/progress/strength"><Card><div className="choice-icon"><Dumbbell /></div><span>PERFORMANCE</span><h2>Força e volume</h2><p>Evolução por exercício usando somente as sessões registradas.</p><strong>ABRIR <ArrowRight /></strong></Card></Link><Link to="/app/check-in"><Card><div className="choice-icon"><Activity /></div><span>RECUPERAÇÃO</span><h2>Check-in semanal</h2><p>Sinais operacionais de fadiga segundo o seu programa.</p><strong>ABRIR <ArrowRight /></strong></Card></Link><Link to="/app/profile"><Card><div className="choice-icon"><Ruler /></div><span>PERFIL</span><h2>Dados do atleta</h2><p>Configuração do programa, tema e privacidade.</p><strong>ABRIR <ArrowRight /></strong></Card></Link></div></div>;
+}
