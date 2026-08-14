@@ -29,7 +29,7 @@ export class TrainingService {
       guidance = "Readaptação — semanas 1–2: uma série a menos nos exercícios com três ou mais séries e alvo de 3–4 RIR, conforme a pesquisa masculina.";
       exercises = exercises.map((exercise) => ({
         ...exercise,
-        sets: exercise.sets >= 3 ? exercise.sets - 1 : exercise.sets,
+        sets: exercise.customizationVersion == null && exercise.sets >= 3 ? exercise.sets - 1 : exercise.sets,
         rirMin: 3,
         rirMax: 4,
       }));

@@ -77,6 +77,49 @@ describe("autenticação e isolamento server-side", () => {
     expect((await request("/api/me", { headers: { cookie: femaleCookie } })).status).toBe(200);
   });
 
+  it("prepara uma ficha futura ao abrir um dia do calendário", async () => {
+    const maleCookie = await login(env.MALE_USERNAME, env.MALE_PASSWORD);
+    const femaleCookie = await login(env.FEMALE_USERNAME, env.FEMALE_PASSWORD);
+    const day = await env.DB.prepare(`SELECT d.id FROM training_days d JOIN training_blocks b ON b.id=d.block_id
+      JOIN training_programs p ON p.id=b.program_id WHERE p.program_key='male-2026' AND b.block_number=1 AND d.weekday=1 LIMIT 1`).first<{ id: string }>();
+    expect(day).not.toBeNull();
+    const response = await request("/api/workouts/prepare", {
+      method: "POST",
+      headers: { cookie: maleCookie, origin, "content-type": "application/json" },
+      body: JSON.stringify({ trainingDayId: day!.id, scheduledDate: "2026-10-05", originalDate: "2026-10-05" }),
+    });
+    expect(response.status).toBe(201);
+    const prepared = await response.json() as { id: string };
+    const workout = await request(`/api/workouts/${encodeURIComponent(prepared.id)}`, { headers: { cookie: maleCookie } });
+    expect(workout.status).toBe(200);
+    expect((await workout.json() as { exercises: unknown[] }).exercises.length).toBeGreaterThan(0);
+    const forbidden = await request("/api/workouts/prepare", {
+      method: "POST",
+      headers: { cookie: femaleCookie, origin, "content-type": "application/json" },
+      body: JSON.stringify({ trainingDayId: day!.id, scheduledDate: "2026-10-05", originalDate: "2026-10-05" }),
+    });
+    expect(forbidden.status).toBe(404);
+
+    const moved = await request("/api/calendar/overrides", {
+      method: "POST",
+      headers: { cookie: maleCookie, origin, "content-type": "application/json" },
+      body: JSON.stringify({ originalDate: "2026-10-12", newDate: "2026-10-13", trainingDayId: day!.id, action: "rescheduled", reason: "Teste", version: null }),
+    });
+    expect(moved.status).toBe(200);
+    const blockedOriginal = await request("/api/workouts/prepare", {
+      method: "POST",
+      headers: { cookie: maleCookie, origin, "content-type": "application/json" },
+      body: JSON.stringify({ trainingDayId: day!.id, scheduledDate: "2026-10-12", originalDate: "2026-10-12" }),
+    });
+    expect(blockedOriginal.status).toBe(404);
+    const movedArrival = await request("/api/workouts/prepare", {
+      method: "POST",
+      headers: { cookie: maleCookie, origin, "content-type": "application/json" },
+      body: JSON.stringify({ trainingDayId: day!.id, scheduledDate: "2026-10-13", originalDate: "2026-10-12" }),
+    });
+    expect(movedArrival.status).toBe(201);
+  });
+
   it("entrega a ficha completa, inclui sessão parcial anterior e persiste a série confirmada", async () => {
     const maleCookie = await login(env.MALE_USERNAME, env.MALE_PASSWORD);
     const femaleCookie = await login(env.FEMALE_USERNAME, env.FEMALE_PASSWORD);
@@ -105,12 +148,28 @@ describe("autenticação e isolamento server-side", () => {
 
     const workoutResponse = await request(`/api/workouts/${encodeURIComponent(currentSessionId)}`, { headers: { cookie: maleCookie } });
     expect(workoutResponse.status).toBe(200);
-    const workout = await workoutResponse.json() as { version: number; exercises: Array<{ prescriptionId: string; exerciseId: string; equipment: string | null; previousSession: null | { scheduledDate: string; sets: Array<{ notes: string }> }; progressionSuggestion: null | { kind: string } }> };
+    const workout = await workoutResponse.json() as { version: number; exercises: Array<{ prescriptionId: string; exerciseId: string; originalExerciseId: string; originalName: string; replacementPrescriptionId: string | null; customizationVersion: number | null; name: string; sets: number; equipment: string | null; previousSession: null | { scheduledDate: string; sets: Array<{ notes: string }> }; progressionSuggestion: null | { kind: string } }> };
     const exercise = workout.exercises.find((item) => item.prescriptionId === row!.prescriptionId);
     expect(exercise?.equipment).toBe("Máquina ou barra");
+    expect(exercise?.originalExerciseId).toBe(row!.exerciseId);
+    expect(exercise?.replacementPrescriptionId).toBeNull();
     expect(exercise?.previousSession?.scheduledDate).toBe("2026-07-20");
     expect(exercise?.previousSession?.sets[0]?.notes).toBe("Execução anterior estável");
     expect(exercise?.progressionSuggestion?.kind).toBe("hold_and_add_reps");
+
+    const customizationTarget = workout.exercises[1]!;
+    const alternativesResponse = await request(`/api/workouts/${encodeURIComponent(currentSessionId)}/exercises/${encodeURIComponent(customizationTarget.prescriptionId)}/alternatives`, { headers: { cookie: maleCookie } });
+    expect(alternativesResponse.status).toBe(200);
+    const alternatives = await alternativesResponse.json() as { alternatives: Array<{ prescriptionId: string; exerciseId: string; name: string }> };
+    expect(alternatives.alternatives.length).toBeGreaterThan(0);
+    const replacement = alternatives.alternatives[0]!;
+    const customizeResponse = await request(`/api/workouts/${encodeURIComponent(currentSessionId)}/exercises/${encodeURIComponent(customizationTarget.prescriptionId)}/customization`, {
+      method: "PATCH", headers: { cookie: maleCookie, origin, "content-type": "application/json" }, body: JSON.stringify({ replacementPrescriptionId: replacement.prescriptionId, sets: customizationTarget.sets + 1, version: null }),
+    });
+    expect(customizeResponse.status).toBe(200);
+    const customizedWorkout = await request(`/api/workouts/${encodeURIComponent(currentSessionId)}`, { headers: { cookie: maleCookie } }).then((response) => response.json() as Promise<{ exercises: typeof workout.exercises }>);
+    const customized = customizedWorkout.exercises.find((item) => item.prescriptionId === customizationTarget.prescriptionId);
+    expect(customized).toMatchObject({ exerciseId: replacement.exerciseId, name: replacement.name, replacementPrescriptionId: replacement.prescriptionId, sets: customizationTarget.sets + 1, customizationVersion: 1 });
 
     const startResponse = await request(`/api/workouts/${encodeURIComponent(currentSessionId)}/start`, {
       method: "POST", headers: { cookie: maleCookie, origin, "content-type": "application/json" }, body: JSON.stringify({ version: workout.version }),
@@ -132,6 +191,7 @@ describe("autenticação e isolamento server-side", () => {
     expect(history.history[0]?.notes).toBe("Série nova confirmada");
 
     expect((await request(`/api/workouts/${encodeURIComponent(currentSessionId)}`, { headers: { cookie: femaleCookie } })).status).toBe(404);
+    expect((await request(`/api/workouts/${encodeURIComponent(currentSessionId)}/exercises/${encodeURIComponent(customizationTarget.prescriptionId)}/alternatives`, { headers: { cookie: femaleCookie } })).status).toBe(404);
     expect((await request(`/api/exercises/${encodeURIComponent(row!.exerciseId)}/history`, { headers: { cookie: femaleCookie } })).status).toBe(404);
   });
 

@@ -2,7 +2,7 @@ import { addDays, addMonths, endOfMonth, endOfWeek, format, isSameMonth, startOf
 import { ptBR } from "date-fns/locale";
 import { Activity, ChevronLeft, ChevronRight, CircleAlert, Dumbbell, Moon, Play, Plus, Repeat2, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useToast } from "../../app/ToastProvider";
 import { Button, Card, PageHeader, Skeleton, StatusPill } from "../../components/ui";
 import { apiMutation } from "../../lib/api";
@@ -21,7 +21,7 @@ interface CalendarItem {
   status: string;
   block?: number;
   week?: number;
-  override?: { version?: number; reason?: string };
+  override?: { version?: number; reason?: string; originalDate?: string; newDate?: string | null };
   session?: { id: string; version: number; status: string } | null;
 }
 interface CalendarDto { from: string; to: string; items: CalendarItem[] }
@@ -32,6 +32,7 @@ function EventIcon({ kind }: { kind: CalendarItem["kind"] }) {
 
 export function CalendarPage() {
   const { show } = useToast();
+  const navigate = useNavigate();
   const [cursor, setCursor] = useState(new Date());
   const [mode, setMode] = useState<"month" | "week">("month");
   const [selected, setSelected] = useState<CalendarItem | null>(null);
@@ -46,6 +47,7 @@ export function CalendarPage() {
   const [activityDuration, setActivityDuration] = useState(30);
   const [activityRpe, setActivityRpe] = useState(3);
   const [activityNotes, setActivityNotes] = useState("");
+  const [openingWorkout, setOpeningWorkout] = useState(false);
   const range = useMemo(() => mode === "month"
     ? { from: startOfWeek(startOfMonth(cursor), { weekStartsOn: 1 }), to: endOfWeek(endOfMonth(cursor), { weekStartsOn: 1 }) }
     : { from: startOfWeek(cursor, { weekStartsOn: 1 }), to: endOfWeek(cursor, { weekStartsOn: 1 }) }, [cursor, mode]);
@@ -62,7 +64,7 @@ export function CalendarPage() {
     if (!selected) return;
     try {
       const result = await apiMutation<{ queued?: boolean }>("/api/calendar/overrides", "POST", {
-        originalDate: selected.date,
+        originalDate: selected.override?.originalDate ?? selected.date,
         newDate: action === "rescheduled" ? newDate : null,
         trainingDayId: selected.templateId ?? null,
         action,
@@ -113,6 +115,25 @@ export function CalendarPage() {
     } catch (error) { show(error instanceof Error ? error.message : "Não foi possível registrar a atividade.", "error"); }
   };
 
+  const openWorkout = async () => {
+    if (!selected?.templateId || selected.kind !== "strength") return;
+    setOpeningWorkout(true);
+    try {
+      const sessionId = selected.session?.id ?? (await apiMutation<{ id: string }>("/api/workouts/prepare", "POST", {
+        trainingDayId: selected.templateId,
+        scheduledDate: selected.date,
+        originalDate: selected.override?.originalDate ?? selected.date,
+      })).id;
+      navigate(`/app/workout/${encodeURIComponent(sessionId)}`);
+    } catch (error) {
+      show(error instanceof Error ? error.message : "Não foi possível abrir os exercícios deste dia.", "error");
+      setOpeningWorkout(false);
+    }
+  };
+
+  const selectedWorkoutWasMoved = selected?.status === "rescheduled" && selected.override?.newDate != null && selected.override.newDate !== selected.date;
+  const canOpenSelectedWorkout = selected?.kind === "strength" && !selectedWorkoutWasMoved && !["missed", "rest", "skipped"].includes(selected.status);
+
   return <div className="page-stack calendar-page">
     <PageHeader eyebrow="PLANEJAMENTO" title="Calendário" />
     <div className="calendar-toolbar">
@@ -124,9 +145,11 @@ export function CalendarPage() {
       {days.map((date) => {
         const dateItems = itemsFor(date);
         const outside = !isSameMonth(date, cursor) && mode === "month";
-        return <div key={date.toISOString()} className={`calendar-day ${outside ? "outside" : ""} ${format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd") ? "today" : ""}`}>
-          <span>{format(date, mode === "week" ? "EEE d" : "d", { locale: ptBR })}</span>
-          <div className="day-events">{dateItems.map((item, index) => <button key={`${item.kind}-${item.templateId ?? index}`} className={`day-event event-${item.kind} event-${item.status}`} onClick={() => setSelected(item)}><EventIcon kind={item.kind} /><strong>{item.name}</strong>{mode === "week" && <small>{item.subtitle}</small>}</button>)}</div>
+        const primaryItem = dateItems.find((item) => item.kind !== "extra") ?? dateItems[0];
+        const selectDay = () => { if (primaryItem) setSelected(primaryItem); };
+        return <div key={date.toISOString()} onClick={selectDay} className={`calendar-day ${outside ? "outside" : ""} ${format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd") ? "today" : ""}`}>
+          <button type="button" className="calendar-date" aria-label={`Ver ${format(date, "d 'de' MMMM", { locale: ptBR })}`} onClick={selectDay}>{format(date, mode === "week" ? "EEE d" : "d", { locale: ptBR })}</button>
+          <div className="day-events">{dateItems.map((item, index) => <button key={`${item.kind}-${item.templateId ?? index}`} className={`day-event event-${item.kind} event-${item.status}`} onClick={(event) => { event.stopPropagation(); setSelected(item); }}><EventIcon kind={item.kind} /><strong>{item.name}</strong>{mode === "week" && <small>{item.subtitle}</small>}</button>)}</div>
         </div>;
       })}
     </Card>}
@@ -138,7 +161,7 @@ export function CalendarPage() {
         <div className="modal-title"><div className={`event-icon event-${selected.kind}`}><EventIcon kind={selected.kind} /></div><div><h2>{selected.name}</h2><p>{selected.subtitle}</p></div><StatusPill status={selected.status} /></div>
         {selected.durationMin && <div className="detail-chips"><span>{selected.durationMin}{selected.durationMax && selected.durationMax !== selected.durationMin ? `–${selected.durationMax}` : ""} min</span>{selected.rpeMin != null && <span>RPE {selected.rpeMin}{selected.rpeMax !== selected.rpeMin ? `–${selected.rpeMax}` : ""}</span>}{selected.week && <span>Semana {selected.week}</span>}</div>}
         {selected.kind === "strength" && <div className="reschedule-box">
-          {selected.session?.id && <Link className="button button-secondary" to={`/app/workout/${encodeURIComponent(selected.session.id)}`}><Dumbbell /> ABRIR TREINO</Link>}
+          {canOpenSelectedWorkout ? <><Button variant="secondary" loading={openingWorkout} onClick={() => void openWorkout()}><Dumbbell /> VER EXERCÍCIOS</Button><p>Abra a ficha para consultar ou personalizar o treino deste dia.</p></> : <p>Este treino foi retirado deste dia. Abra a nova data no calendário para ver a ficha.</p>}
           <h3><Repeat2 /> Reagendar treino</h3><p>O programa original será preservado; a exceção fica registrada.</p>
           <label>Nova data<input type="date" min={selected.date} value={newDate} onChange={(event) => setNewDate(event.target.value)} /></label>
           <label>Motivo (opcional)<input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} /></label>

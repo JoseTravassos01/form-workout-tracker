@@ -27,6 +27,18 @@ export const completeExerciseSchema = z.object({
   version: versionSchema,
 }).strict();
 
+export const prepareWorkoutSchema = z.object({
+  trainingDayId: idSchema,
+  scheduledDate: isoDateSchema,
+  originalDate: isoDateSchema,
+}).strict();
+
+export const customizeExerciseSchema = z.object({
+  replacementPrescriptionId: idSchema.nullable(),
+  sets: z.number().int().min(1).max(20),
+  version: versionSchema.nullable(),
+}).strict();
+
 export const sessionMutationSchema = z.object({
   version: versionSchema,
   notes: z.string().max(4000).optional(),
