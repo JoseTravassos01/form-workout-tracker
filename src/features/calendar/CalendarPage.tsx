@@ -34,6 +34,7 @@ export function CalendarPage() {
   const { show } = useToast();
   const navigate = useNavigate();
   const [cursor, setCursor] = useState(new Date());
+  const [activeDate, setActiveDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [mode, setMode] = useState<"month" | "week">("month");
   const [selected, setSelected] = useState<CalendarItem | null>(null);
   const [newDate, setNewDate] = useState("");
@@ -59,6 +60,14 @@ export function CalendarPage() {
     return result;
   }, [range]);
   const itemsFor = (date: Date) => data?.items.filter((item) => item.date === format(date, "yyyy-MM-dd")) ?? [];
+  const activeItems = data?.items.filter((item) => item.date === activeDate) ?? [];
+  const activeDateLabel = new Date(`${activeDate}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+
+  const moveCursor = (direction: -1 | 1) => {
+    const next = mode === "month" ? (direction === -1 ? subMonths(cursor, 1) : addMonths(cursor, 1)) : addDays(cursor, direction * 7);
+    setCursor(next);
+    setActiveDate(format(next, "yyyy-MM-dd"));
+  };
 
   const change = async (action: "rescheduled" | "missed" | "rest") => {
     if (!selected) return;
@@ -137,22 +146,26 @@ export function CalendarPage() {
   return <div className="page-stack calendar-page">
     <PageHeader eyebrow="PLANEJAMENTO" title="Calendário" />
     <div className="calendar-toolbar">
-      <div className="view-toggle"><button className={mode === "month" ? "active" : ""} onClick={() => setMode("month")}>Mês</button><button className={mode === "week" ? "active" : ""} onClick={() => setMode("week")}>Semana</button></div>
-      <div className="month-switch"><button aria-label="Anterior" onClick={() => setCursor(mode === "month" ? subMonths(cursor, 1) : addDays(cursor, -7))}><ChevronLeft /></button><strong>{format(cursor, mode === "month" ? "MMMM yyyy" : "'Semana de' d MMM", { locale: ptBR })}</strong><button aria-label="Próximo" onClick={() => setCursor(mode === "month" ? addMonths(cursor, 1) : addDays(cursor, 7))}><ChevronRight /></button></div>
+      <div className="view-toggle"><button className={mode === "month" ? "active" : ""} onClick={() => { setMode("month"); setActiveDate(format(cursor, "yyyy-MM-dd")); }}>Mês</button><button className={mode === "week" ? "active" : ""} onClick={() => { setMode("week"); setActiveDate(format(cursor, "yyyy-MM-dd")); }}>Semana</button></div>
+      <div className="month-switch"><button aria-label="Anterior" onClick={() => moveCursor(-1)}><ChevronLeft /></button><strong>{format(cursor, mode === "month" ? "MMMM yyyy" : "'Semana de' d MMM", { locale: ptBR })}</strong><button aria-label="Próximo" onClick={() => moveCursor(1)}><ChevronRight /></button></div>
     </div>
     {loading ? <Skeleton className="calendar-skeleton" /> : <Card className={`calendar-grid ${mode}`}>
       {mode === "month" && ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"].map((name) => <div className="weekday-name" key={name}>{name}</div>)}
       {days.map((date) => {
         const dateItems = itemsFor(date);
         const outside = !isSameMonth(date, cursor) && mode === "month";
-        const primaryItem = dateItems.find((item) => item.kind !== "extra") ?? dateItems[0];
-        const selectDay = () => { if (primaryItem) setSelected(primaryItem); };
-        return <div key={date.toISOString()} onClick={selectDay} className={`calendar-day ${outside ? "outside" : ""} ${format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd") ? "today" : ""}`}>
-          <button type="button" className="calendar-date" aria-label={`Ver ${format(date, "d 'de' MMMM", { locale: ptBR })}`} onClick={selectDay}>{format(date, mode === "week" ? "EEE d" : "d", { locale: ptBR })}</button>
-          <div className="day-events">{dateItems.map((item, index) => <button key={`${item.kind}-${item.templateId ?? index}`} className={`day-event event-${item.kind} event-${item.status}`} onClick={(event) => { event.stopPropagation(); setSelected(item); }}><EventIcon kind={item.kind} /><strong>{item.name}</strong>{mode === "week" && <small>{item.subtitle}</small>}</button>)}</div>
+        const dateKey = format(date, "yyyy-MM-dd");
+        const selectDay = () => setActiveDate(dateKey);
+        return <div key={date.toISOString()} onClick={selectDay} className={`calendar-day ${outside ? "outside" : ""} ${dateKey === format(new Date(), "yyyy-MM-dd") ? "today" : ""} ${dateKey === activeDate ? "selected" : ""}`}>
+          <button type="button" className="calendar-date" aria-label={`Ver ${format(date, "d 'de' MMMM", { locale: ptBR })}`} onClick={(event) => { event.stopPropagation(); selectDay(); }}>{format(date, mode === "week" ? "EEE d" : "d", { locale: ptBR })}</button>
+          <div className="day-events">{dateItems.map((item, index) => <button type="button" aria-label={`${item.name} — ${format(date, "d 'de' MMMM", { locale: ptBR })}`} key={`${item.kind}-${item.templateId ?? index}`} className={`day-event event-${item.kind} event-${item.status}`} onClick={(event) => { event.stopPropagation(); setActiveDate(dateKey); setSelected(item); }}><EventIcon kind={item.kind} /><strong>{item.name}</strong>{mode === "week" && <small>{item.subtitle}</small>}</button>)}</div>
         </div>;
       })}
     </Card>}
+    {!loading && <section className="mobile-calendar-agenda" aria-live="polite">
+      <div className="mobile-agenda-heading"><span>AGENDA DO DIA</span><h2>{activeDateLabel}</h2></div>
+      {activeItems.length === 0 ? <Card className="mobile-agenda-empty"><Moon /><p>Nenhum treino ou atividade planejada.</p></Card> : <div className="mobile-agenda-list">{activeItems.map((item, index) => <button type="button" key={`${item.kind}-${item.templateId ?? index}`} className={`mobile-agenda-event event-${item.kind} event-${item.status}`} onClick={() => setSelected(item)}><span className="mobile-agenda-icon"><EventIcon kind={item.kind} /></span><span><strong>{item.name}</strong><small>{item.subtitle ?? (item.kind === "rest" ? "Recuperação" : "Toque para ver os detalhes")}</small></span><ChevronRight /></button>)}</div>}
+    </section>}
     <div className="calendar-legend"><span><i className="legend-strength" /> Treino</span><span><i className="legend-cardio" /> Cardio</span><span><i className="legend-extra" /> Extra</span><span><i className="legend-rest" /> Descanso</span><span><i className="legend-completed" /> Realizado</span></div>
     {selected && <div className="modal-layer" role="dialog" aria-modal="true" aria-label="Detalhes do dia">
       <button className="modal-backdrop" onClick={() => setSelected(null)} />

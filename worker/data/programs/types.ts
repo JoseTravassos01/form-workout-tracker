@@ -16,6 +16,7 @@ export interface ExerciseSeed {
   techniqueNotes: string;
   progressionNotes?: string;
   requiresSelection?: boolean;
+  countsAsDirectGluteMedius?: boolean;
 }
 
 function inferEquipment(slug: string, name: string): string | undefined {
@@ -37,6 +38,7 @@ export interface TrainingDaySeed {
   weekday: Weekday;
   name: string;
   description: string;
+  type?: "strength" | "recovery";
   duration?: readonly [number, number];
   exercises: ExerciseSeed[];
 }
@@ -83,7 +85,7 @@ export interface ProgramSeed {
   name: string;
   description: string;
   sourceResearch: string;
-  version: "2026.1";
+  version: "2026.1" | "2026.2" | "2026.3";
   profile: {
     sex: "male" | "female";
     heightCm?: number;
@@ -123,6 +125,10 @@ export function day(
   duration?: readonly [number, number],
 ): TrainingDaySeed {
   return { weekday, name, exercises, description, ...(duration ? { duration } : {}) };
+}
+
+export function recoveryDay(weekday: Weekday, name: string, description: string): TrainingDaySeed {
+  return { weekday, name, description, type: "recovery", exercises: [] };
 }
 
 export function cardio(

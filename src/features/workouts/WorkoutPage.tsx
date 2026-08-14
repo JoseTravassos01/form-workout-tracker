@@ -35,7 +35,10 @@ function ExerciseCard({ workoutId, exercise, disabled, customizable, onRefresh, 
   const [alternatives, setAlternatives] = useState<ExerciseAlternativesDto | null>(null);
   const [loadingAlternatives, setLoadingAlternatives] = useState(false);
   const [savingCustomization, setSavingCustomization] = useState(false);
-  const [replacementPrescriptionId, setReplacementPrescriptionId] = useState(exercise.replacementPrescriptionId ?? "");
+  const initialReplacement = exercise.replacementPrescriptionId ?? (exercise.exerciseId !== exercise.originalExerciseId ? "__custom__" : "");
+  const [replacementPrescriptionId, setReplacementPrescriptionId] = useState(initialReplacement);
+  const [customExerciseName, setCustomExerciseName] = useState(initialReplacement === "__custom__" ? exercise.name : "");
+  const [applyToFuture, setApplyToFuture] = useState(true);
   const [plannedSets, setPlannedSets] = useState(exercise.sets);
   const previous = exercise.previousSession?.sets ?? [];
   const setEndpoint = `/api/workouts/${encodeURIComponent(workoutId)}/exercises/${encodeURIComponent(exercise.prescriptionId)}/sets`;
@@ -123,7 +126,10 @@ function ExerciseCard({ workoutId, exercise, disabled, customizable, onRefresh, 
 
   const openEditor = async () => {
     setEditing(true);
-    setReplacementPrescriptionId(exercise.replacementPrescriptionId ?? "");
+    const currentReplacement = exercise.replacementPrescriptionId ?? (exercise.exerciseId !== exercise.originalExerciseId ? "__custom__" : "");
+    setReplacementPrescriptionId(currentReplacement);
+    setCustomExerciseName(currentReplacement === "__custom__" ? exercise.name : "");
+    setApplyToFuture(true);
     setPlannedSets(exercise.sets);
     if (alternatives) return;
     setLoadingAlternatives(true);
@@ -140,11 +146,13 @@ function ExerciseCard({ workoutId, exercise, disabled, customizable, onRefresh, 
     setSavingCustomization(true);
     try {
       await apiMutation(`/api/workouts/${encodeURIComponent(workoutId)}/exercises/${encodeURIComponent(exercise.prescriptionId)}/customization`, "PATCH", {
-        replacementPrescriptionId: replacementPrescriptionId || null,
+        replacementPrescriptionId: replacementPrescriptionId && replacementPrescriptionId !== "__custom__" ? replacementPrescriptionId : null,
+        customExerciseName: replacementPrescriptionId === "__custom__" ? customExerciseName.trim() : null,
+        applyToFuture,
         sets: plannedSets,
         version: exercise.customizationVersion,
       });
-      show("Treino deste dia personalizado.", "success");
+      show(applyToFuture ? "Alteração salva para este treino e para as próximas semanas." : "Treino deste dia personalizado.", "success");
       setEditing(false);
       await onRefresh();
     } catch (error) {
@@ -161,15 +169,17 @@ function ExerciseCard({ workoutId, exercise, disabled, customizable, onRefresh, 
     <button className="exercise-heading" onClick={() => setExpanded(!expanded)}><div><span className="exercise-order">{exercise.orderIndex.toString().padStart(2, "0")}</span><div><h2>{exercise.name}</h2><p>{exercise.sets} séries · {exercise.repsLabel ?? `${exercise.repsMin}–${exercise.repsMax} reps`} · {exercise.rirMin === exercise.rirMax ? exercise.rirMin : `${exercise.rirMin}–${exercise.rirMax}`} RIR</p><small>{exercise.primaryMuscle}{exercise.equipment ? ` · ${exercise.equipment}` : ""}</small></div></div>{exercise.log?.completed ? <CheckCircle2 className="completed-mark" /> : expanded ? <ChevronUp /> : <ChevronDown />}</button>
     {expanded && <div className="exercise-body">
       <div className="prescription-strip"><span><Timer /> Descanso {exercise.restSecondsMin === exercise.restSecondsMax ? `${exercise.restSecondsMin}s` : `${exercise.restSecondsMin}–${exercise.restSecondsMax}s`}</span><div className="prescription-actions">{customizable && <button type="button" onClick={() => void openEditor()}><Settings2 /> Editar treino</button>}<Link to={`/app/exercises/${encodeURIComponent(exercise.exerciseId)}`}><History /> Histórico</Link></div></div>
-      {exercise.replacementPrescriptionId && <div className="customization-notice"><RotateCcw /><span><strong>Exercício substituído neste dia</strong>Original: {exercise.originalName}</span></div>}
+      {exercise.exerciseId !== exercise.originalExerciseId && <div className="customization-notice"><RotateCcw /><span><strong>{exercise.customizationSource === "preference" ? "Preferência aplicada neste treino" : "Exercício substituído neste dia"}</strong>Original: {exercise.originalName}</span></div>}
       {editing && <div className="exercise-editor">
         <div className="exercise-editor-heading"><div><span>PERSONALIZAR ESTE DIA</span><strong>Troque o exercício ou ajuste as séries</strong></div><button type="button" aria-label="Fechar edição" onClick={() => setEditing(false)}><X /></button></div>
-        <label>Exercício semelhante<select disabled={loadingAlternatives || hasCompletedSets || savingCustomization} value={replacementPrescriptionId} onChange={(event) => setReplacementPrescriptionId(event.target.value)}><option value="">{exercise.originalName} (original)</option>{alternatives?.alternatives.map((item) => <option key={item.prescriptionId} value={item.prescriptionId}>{item.name}{item.equipment ? ` · ${item.equipment}` : ""}</option>)}</select></label>
+        <label>Exercício semelhante<select disabled={loadingAlternatives || hasCompletedSets || savingCustomization} value={replacementPrescriptionId} onChange={(event) => setReplacementPrescriptionId(event.target.value)}><option value="">{exercise.originalName} (original)</option>{alternatives?.alternatives.map((item) => <option key={item.prescriptionId} value={item.prescriptionId}>{item.name}{item.equipment ? ` · ${item.equipment}` : ""}</option>)}<option value="__custom__">Outro exercício…</option></select></label>
+        {replacementPrescriptionId === "__custom__" && <label>Qual exercício você quer fazer?<input disabled={hasCompletedSets || savingCustomization} value={customExerciseName} onChange={(event) => setCustomExerciseName(event.target.value)} maxLength={120} placeholder="Digite o nome do exercício" /></label>}
         {loadingAlternatives && <small>Carregando opções semelhantes…</small>}
         {!loadingAlternatives && alternatives?.alternatives.length === 0 && <small>Não há outra variação cadastrada para o mesmo grupo muscular neste programa.</small>}
         {hasCompletedSets && <small>A troca fica bloqueada depois da primeira série registrada, mas você ainda pode adicionar séries.</small>}
         <div className="planned-sets"><div><span>SÉRIES PLANEJADAS</span><strong>{plannedSets}</strong></div><div><button type="button" aria-label="Remover uma série" disabled={savingCustomization || plannedSets <= minimumSets} onClick={() => setPlannedSets((current) => Math.max(minimumSets, current - 1))}><Minus /></button><button type="button" aria-label="Adicionar uma série" disabled={savingCustomization || plannedSets >= 20} onClick={() => setPlannedSets((current) => Math.min(20, current + 1))}><Plus /></button></div></div>
-        <Button loading={savingCustomization} onClick={() => void saveCustomization()}><Save /> SALVAR NESTE DIA</Button>
+        <label className="future-preference"><input type="checkbox" checked={applyToFuture} onChange={(event) => setApplyToFuture(event.target.checked)} /><span><strong>Usar nas próximas semanas</strong>Esta escolha ficará salva para os próximos treinos deste exercício.</span></label>
+        <Button loading={savingCustomization} disabled={replacementPrescriptionId === "__custom__" && customExerciseName.trim().length < 2} onClick={() => void saveCustomization()}><Save /> SALVAR ALTERAÇÃO</Button>
       </div>}
       {exercise.previousSession ? <div className="last-time"><div><span>ÚLTIMA VEZ</span><small>{new Date(`${exercise.previousSession.scheduledDate}T12:00:00`).toLocaleDateString("pt-BR")}</small></div>{previous.map((set) => <strong key={set.setNumber}>{set.loadKg ?? "—"}kg × {set.reps ?? "—"} <small>@{set.actualRir ?? "—"}</small></strong>)}<button type="button" disabled={disabled} onClick={usePreviousLoads}><Copy /> Usar cargas anteriores</button></div> : <div className="last-time last-time-empty"><div><span>ÚLTIMA VEZ</span><strong>Ainda não há histórico para este exercício.</strong><small>Registre a primeira sessão para acompanhar sua evolução.</small></div></div>}
       <div className="set-list">{sets.map((set, index) => <div className={`set-row ${set.completed ? "set-complete" : ""} ${set.syncStatus === "pending" ? "set-pending" : ""}`} key={set.setNumber}>

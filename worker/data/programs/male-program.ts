@@ -36,7 +36,7 @@ const cardioAdvanced = [
   cardio(7, "Caminhada ou bicicleta", [30, 45], [2, 3], "Leve ou intervalos opcionais", "Caminhada por padrão; intervalos só com performance normal de pernas.", "HIIT não é obrigatório e deve ser retirado se interferir.", "Bicicleta: 5 min fácil; 5–6 × 1 min forte RPE 8–9 com 2 min fácil; 5 min fácil."),
 ];
 
-export const maleProgram: ProgramSeed = {
+export const maleProgramV1: ProgramSeed = {
   key: "male-2026",
   name: "Recomposição e hipertrofia — programa anual",
   description: "Upper/Lower anual baseado em evidências, com prioridade progressiva para panturrilhas e abdômen durante o retorno ao treinamento.",

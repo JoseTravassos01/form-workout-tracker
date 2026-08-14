@@ -8,6 +8,7 @@ export interface PerformedSet {
 export interface ProgressionInput {
   sets: PerformedSet[];
   prescribedSets: number;
+  repsMin: number;
   repsMax: number;
   rirMin: number;
   rirMax: number;
@@ -38,17 +39,17 @@ export function calculateProgressionSuggestion(input: ProgressionInput): Progres
         kind: "increase_load",
         minPercent: null,
         maxPercent: null,
-        message: "Todas as séries atingiram o topo com RIR e técnica adequados. Considere o menor incremento disponível e confirme a nova carga antes da próxima execução.",
+        message: "Pronta para considerar aumento de carga.",
       };
     }
     return {
       kind: "increase_load",
       minPercent: input.loadIncreasePercent[0],
       maxPercent: input.loadIncreasePercent[1],
-      message: `Todas as séries atingiram o topo com RIR e técnica adequados. Considere o menor incremento disponível (aprox. ${input.loadIncreasePercent[0]}–${input.loadIncreasePercent[1]}%).`,
+      message: "Pronta para considerar aumento de carga.",
     };
   }
-  return { kind: "hold_and_add_reps", message: "Mantenha a carga e tente acrescentar repetições dentro da faixa, preservando RIR e técnica." };
+  return { kind: "hold_and_add_reps", message: "Mantenha a carga e tente aumentar repetições." };
 }
 
 export function calculateWorkoutCompletion(exercises: Array<{ completedSets: number; prescribedSets: number }>): number {

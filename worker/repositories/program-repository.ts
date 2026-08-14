@@ -4,6 +4,8 @@ export interface ProgramContextRow {
   program_description: string;
   source_research: string;
   program_version: string;
+  program_key: string;
+  profile_sex: "male" | "female";
   program_start_date: string;
   timezone: string;
   current_week: number;
@@ -17,8 +19,9 @@ export class ProgramRepository {
 
   getContext(profileId: string): Promise<ProgramContextRow | null> {
     return this.database.prepare(`SELECT tp.id program_id,tp.name program_name,tp.description program_description,tp.source_research,tp.version program_version,
-      ap.program_start_date,ap.timezone,ps.current_week,ps.current_block,ps.version state_version,ps.manual_override
+      tp.program_key,ap.sex profile_sex,COALESCE(apa.effective_from,ap.program_start_date) program_start_date,ap.timezone,ps.current_week,ps.current_block,ps.version state_version,ps.manual_override
       FROM athlete_profiles ap JOIN training_programs tp ON tp.id=ap.current_program_id JOIN program_state ps ON ps.athlete_profile_id=ap.id
+      LEFT JOIN athlete_program_assignments apa ON apa.athlete_profile_id=ap.id AND apa.program_id=tp.id
       WHERE ap.id=? AND tp.active=1 LIMIT 1`).bind(profileId).first<ProgramContextRow>();
   }
 

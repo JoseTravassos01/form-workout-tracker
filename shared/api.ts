@@ -49,6 +49,8 @@ export interface ExercisePrescriptionDto {
   originalName: string;
   replacementPrescriptionId: string | null;
   customizationVersion: number | null;
+  customizationSource: "session" | "preference" | null;
+  preferenceVersion: number | null;
   name: string;
   equipment: string | null;
   instructions: string;
@@ -97,6 +99,9 @@ export interface ExerciseAlternativesDto {
 
 export interface WorkoutDto {
   id: string;
+  programId: string;
+  programVersion: string;
+  programStartDate: string;
   scheduledDate: string;
   blockNumber: number;
   name: string;

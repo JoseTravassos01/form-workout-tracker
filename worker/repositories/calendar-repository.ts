@@ -1,6 +1,9 @@
 export interface ScheduleTemplateRow {
+  program_id: string;
+  effective_from: string;
+  effective_to: string | null;
   block_number: number;
-  kind: "strength" | "cardio";
+  kind: "strength" | "cardio" | "rest";
   id: string;
   weekday: number;
   name: string;
@@ -19,11 +22,14 @@ export class CalendarRepository {
   constructor(private readonly database: D1Database) {}
 
   async getTemplates(profileId: string): Promise<ScheduleTemplateRow[]> {
-    const result = await this.database.prepare(`SELECT b.block_number,'strength' kind,d.id,d.weekday,d.name,d.description subtitle,d.duration_min,d.duration_max,NULL rpe_min,NULL rpe_max
-      FROM training_days d JOIN training_blocks b ON b.id=d.block_id JOIN athlete_profiles a ON a.current_program_id=b.program_id WHERE a.id=?
-      UNION ALL SELECT b.block_number,'cardio' kind,c.id,c.weekday,c.modality name,c.intensity subtitle,c.duration_min,c.duration_max,c.rpe_min,c.rpe_max
-      FROM cardio_prescriptions c JOIN training_blocks b ON b.id=c.block_id JOIN athlete_profiles a ON a.current_program_id=b.program_id WHERE a.id=?
-      ORDER BY block_number,weekday`).bind(profileId, profileId).all<ScheduleTemplateRow>();
+    const result = await this.database.prepare(`SELECT b.program_id,apa.effective_from,apa.effective_to,b.block_number,
+      CASE WHEN d.type='recovery' THEN 'rest' ELSE 'strength' END kind,d.id,d.weekday,d.name,d.description subtitle,d.duration_min,d.duration_max,NULL rpe_min,NULL rpe_max
+      FROM training_days d JOIN training_blocks b ON b.id=d.block_id
+      JOIN athlete_program_assignments apa ON apa.program_id=b.program_id WHERE apa.athlete_profile_id=?
+      UNION ALL SELECT b.program_id,apa.effective_from,apa.effective_to,b.block_number,'cardio' kind,c.id,c.weekday,c.modality name,c.intensity subtitle,c.duration_min,c.duration_max,c.rpe_min,c.rpe_max
+      FROM cardio_prescriptions c JOIN training_blocks b ON b.id=c.block_id
+      JOIN athlete_program_assignments apa ON apa.program_id=b.program_id WHERE apa.athlete_profile_id=?
+      ORDER BY effective_from,block_number,weekday,kind DESC`).bind(profileId, profileId).all<ScheduleTemplateRow>();
     return result.results;
   }
 
@@ -45,7 +51,10 @@ export class CalendarRepository {
 
   async saveOverride(profileId: string, input: { originalDate: string; newDate: string | null; trainingDayId: string | null; action: string; reason: string; version: number | null }): Promise<{ conflict: boolean; id: string; version: number }> {
     if (input.trainingDayId) {
-      const owns = await this.database.prepare(`SELECT d.id FROM training_days d JOIN training_blocks b ON b.id=d.block_id JOIN athlete_profiles a ON a.current_program_id=b.program_id WHERE a.id=? AND d.id=?`).bind(profileId, input.trainingDayId).first();
+      const owns = await this.database.prepare(`SELECT d.id FROM training_days d JOIN training_blocks b ON b.id=d.block_id
+        JOIN athlete_program_assignments apa ON apa.program_id=b.program_id
+        WHERE apa.athlete_profile_id=? AND d.id=? AND ?>=apa.effective_from AND (apa.effective_to IS NULL OR ?<=apa.effective_to)`)
+        .bind(profileId, input.trainingDayId, input.originalDate, input.originalDate).first();
       if (!owns) return { conflict: true, id: "", version: 0 };
     }
     const existing = await this.database.prepare(`SELECT id,version FROM calendar_overrides WHERE athlete_profile_id=? AND original_date=? AND training_day_id IS ?`).bind(profileId, input.originalDate, input.trainingDayId).first<{ id: string; version: number }>();
