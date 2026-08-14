@@ -24,7 +24,7 @@ export class SeedRepository {
 
     statements.push(
       this.database.prepare(`INSERT INTO users (id,username,password_hash,active) VALUES (?,?,?,1)
-        ON CONFLICT(id) DO UPDATE SET username=excluded.username,active=1,updated_at=CURRENT_TIMESTAMP`).bind(account.userId, account.username, account.passwordHash),
+        ON CONFLICT(id) DO UPDATE SET username=excluded.username,password_hash=excluded.password_hash,active=1,updated_at=CURRENT_TIMESTAMP`).bind(account.userId, account.username, account.passwordHash),
       this.database.prepare(`INSERT INTO athlete_profiles (id,user_id,name,sex,height_cm,current_weight_grams,program_start_date,timezone,theme_key,accent_color)
         VALUES (?,?,?,?,?,?,?,'America/Sao_Paulo',?,?)
         ON CONFLICT(id) DO UPDATE SET user_id=excluded.user_id,name=excluded.name,sex=excluded.sex,height_cm=excluded.height_cm,current_weight_grams=COALESCE(athlete_profiles.current_weight_grams,excluded.current_weight_grams),theme_key=excluded.theme_key,accent_color=excluded.accent_color,updated_at=CURRENT_TIMESTAMP`)
