@@ -1,5 +1,6 @@
 const encoder = new TextEncoder();
-const PBKDF2_ITERATIONS = 600_000;
+const PBKDF2_ITERATIONS = 100_000;
+const MAX_PBKDF2_ITERATIONS = 100_000;
 
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -39,11 +40,11 @@ export async function hashPassword(password: string): Promise<string> {
 export async function verifyPassword(password: string, encoded: string): Promise<boolean> {
   const [algorithm, iterationsRaw, saltRaw, expectedRaw] = encoded.split("$");
   const iterations = Number(iterationsRaw);
-  if (algorithm !== "pbkdf2_sha256" || !Number.isSafeInteger(iterations) || !saltRaw || !expectedRaw) return false;
+  if (algorithm !== "pbkdf2_sha256" || !Number.isSafeInteger(iterations) || iterations < 1 || iterations > MAX_PBKDF2_ITERATIONS || !saltRaw || !expectedRaw) return false;
   const actual = await derivePassword(password, fromBase64(saltRaw), iterations);
   const expected = fromBase64(expectedRaw);
   if (actual.byteLength !== expected.byteLength) return false;
-  const subtle = crypto.subtle as SubtleCrypto & { timingSafeEqual(left: BufferSource, right: BufferSource): boolean };
+  const subtle = crypto.subtle as SubtleCrypto & { timingSafeEqual(left: ArrayBuffer | ArrayBufferView, right: ArrayBuffer | ArrayBufferView): boolean };
   return subtle.timingSafeEqual(Uint8Array.from(actual), Uint8Array.from(expected));
 }
 
@@ -52,6 +53,6 @@ export async function secureStringEqual(left: string, right: string): Promise<bo
     crypto.subtle.digest("SHA-256", encoder.encode(left)),
     crypto.subtle.digest("SHA-256", encoder.encode(right)),
   ]);
-  const subtle = crypto.subtle as SubtleCrypto & { timingSafeEqual(left: BufferSource, right: BufferSource): boolean };
+  const subtle = crypto.subtle as SubtleCrypto & { timingSafeEqual(left: ArrayBuffer | ArrayBufferView, right: ArrayBuffer | ArrayBufferView): boolean };
   return subtle.timingSafeEqual(leftHash, rightHash);
 }

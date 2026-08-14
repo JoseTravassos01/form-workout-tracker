@@ -13,7 +13,7 @@ const MAX_ATTEMPTS = 5;
 const BLOCK_MS = 15 * 60 * 1000;
 // A valid PBKDF2 record keeps unknown-user logins on the same expensive path as
 // known users, reducing username-enumeration signal without storing a password.
-const DUMMY_PASSWORD_HASH = "pbkdf2_sha256$600000$cEhL7pCjtsP0Zv8X6O02Vg$6PLgVo1u8PNZwqg2OEo1S5xKYxbPJUw0DlxkD6ldNCk";
+const DUMMY_PASSWORD_HASH = "pbkdf2_sha256$100000$cEhL7pCjtsP0Zv8X6O02Vg$nC4Nt2u5HaXnePrVJpHfb0N71BLuQswxURdvgFmIyaE=";
 
 export class AuthService {
   private readonly repository: AuthRepository;

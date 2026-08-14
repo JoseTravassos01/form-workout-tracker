@@ -28,9 +28,11 @@ beforeAll(async () => {
 describe("autenticação e isolamento server-side", () => {
   it("usa hash com salt e rejeita a senha incorreta", async () => {
     const hash = await hashPassword("uma-senha-de-teste-bem-longa");
+    expect(hash).toMatch(/^pbkdf2_sha256\$100000\$/);
     expect(hash).not.toContain("uma-senha-de-teste-bem-longa");
     expect(await verifyPassword("uma-senha-de-teste-bem-longa", hash)).toBe(true);
     expect(await verifyPassword("senha-incorreta", hash)).toBe(false);
+    await expect(verifyPassword("qualquer-senha", "pbkdf2_sha256$600000$cEhL7pCjtsP0Zv8X6O02Vg$6PLgVo1u8PNZwqg2OEo1S5xKYxbPJUw0DlxkD6ldNCk")).resolves.toBe(false);
   });
 
   it("não expõe rota privada sem sessão", async () => {
