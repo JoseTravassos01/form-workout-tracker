@@ -7,8 +7,10 @@ function required(name: string): string {
 }
 
 const baseURL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:5173";
-const today = "2026-08-13";
-const monday = "2026-08-10";
+const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+const mondayDate = new Date(`${today}T12:00:00Z`);
+mondayDate.setUTCDate(mondayDate.getUTCDate() - (mondayDate.getUTCDay() + 6) % 7);
+const monday = mondayDate.toISOString().slice(0, 10);
 
 async function login(page: Page, username: string, password: string) {
   await page.goto("/login");
@@ -56,6 +58,26 @@ test.beforeAll(async () => {
   const response = await api.post("/api/internal/seed", { headers: { "x-seed-secret": required("SEED_SECRET") } });
   expect(response.ok()).toBeTruthy();
   await api.dispose();
+});
+
+test("abre uma ficha futura pelo calendário e adiciona uma série", async ({ page }) => {
+  await login(page, required("MALE_USERNAME"), required("MALE_PASSWORD"));
+  await page.goto("/app/calendar");
+  const futureStrengthDay = page.locator(".day-event.event-strength").last();
+  await expect(futureStrengthDay).toBeVisible();
+  await futureStrengthDay.click();
+  await page.getByRole("button", { name: "VER EXERCÍCIOS" }).click();
+  await expect(page).toHaveURL(/\/app\/workout\//);
+
+  const exercise = page.locator(".exercise-card").first();
+  await exercise.getByRole("button", { name: "Editar treino" }).click();
+  const plannedSets = exercise.locator(".planned-sets strong");
+  const originalSetCount = Number(await plannedSets.textContent());
+  await exercise.getByRole("button", { name: "Adicionar uma série" }).click();
+  await expect(plannedSets).toHaveText(String(originalSetCount + 1));
+  await exercise.getByRole("button", { name: "SALVAR NESTE DIA" }).click();
+  await expect(page.getByText("Treino deste dia personalizado.")).toBeVisible();
+  await expect(exercise.locator(".exercise-heading p")).toContainText(`${originalSetCount + 1} séries`);
 });
 
 test("fluxos críticos dos dois perfis permanecem isolados", async ({ page }) => {

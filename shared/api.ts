@@ -45,6 +45,10 @@ export interface MeDto {
 export interface ExercisePrescriptionDto {
   prescriptionId: string;
   exerciseId: string;
+  originalExerciseId: string;
+  originalName: string;
+  replacementPrescriptionId: string | null;
+  customizationVersion: number | null;
   name: string;
   equipment: string | null;
   instructions: string;
@@ -75,6 +79,20 @@ export interface ExercisePrescriptionDto {
   previousSession: PreviousExerciseSessionDto | null;
   previousSets: PreviousExerciseSessionDto["sets"];
   progressionSuggestion: ProgressionSuggestionDto | null;
+}
+
+export interface ExerciseAlternativeDto {
+  prescriptionId: string;
+  exerciseId: string;
+  name: string;
+  equipment: string | null;
+  primaryMuscle: string;
+  category: string;
+}
+
+export interface ExerciseAlternativesDto {
+  original: ExerciseAlternativeDto;
+  alternatives: ExerciseAlternativeDto[];
 }
 
 export interface WorkoutDto {
