@@ -35,9 +35,15 @@ export const prepareWorkoutSchema = z.object({
 
 export const customizeExerciseSchema = z.object({
   replacementPrescriptionId: idSchema.nullable(),
+  customExerciseName: z.string().trim().min(2).max(120).nullable().default(null),
+  applyToFuture: z.boolean().default(true),
   sets: z.number().int().min(1).max(20),
   version: versionSchema.nullable(),
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (value.replacementPrescriptionId && value.customExerciseName) {
+    context.addIssue({ code: "custom", message: "Escolha uma recomendação ou informe outro exercício, não os dois.", path: ["customExerciseName"] });
+  }
+});
 
 export const sessionMutationSchema = z.object({
   version: versionSchema,

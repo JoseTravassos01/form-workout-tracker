@@ -10,6 +10,9 @@ interface DayRow {
 
 interface SessionRow extends DayRow {
   session_id: string;
+  program_id: string;
+  program_version: string;
+  program_start_date: string;
   block_number: number;
   scheduled_date: string;
   status: WorkoutStatus;
@@ -25,7 +28,10 @@ interface PrescriptionRow {
   original_exercise_id: string;
   original_name: string;
   replacement_prescription_id: string | null;
+  replacement_exercise_id: string | null;
   customization_version: number | null;
+  customization_source: "session" | "preference" | null;
+  preference_version: number | null;
   name: string;
   equipment: string | null;
   instructions: string;
@@ -89,24 +95,44 @@ interface HistoryRow {
   volumeKg: number;
 }
 
+function customExerciseIdentity(profileId: string, name: string): { id: string; slug: string } {
+  const normalizedName = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "outro-exercicio";
+  const normalizedProfile = profileId.replace(/[^a-zA-Z0-9]+/g, "-").slice(0, 80);
+  const slug = `custom-${normalizedProfile}-${normalizedName}`;
+  return { id: `exercise:${slug}`, slug };
+}
+
 export class WorkoutRepository {
   constructor(private readonly database: D1Database) {}
 
   async ensureSession(profileId: string, blockNumber: number, weekday: number, date: string): Promise<string | null> {
     const dayRow = await this.database.prepare(`SELECT d.id,d.name,d.description,d.duration_min,d.duration_max FROM training_days d
       JOIN training_blocks b ON b.id=d.block_id JOIN training_programs p ON p.id=b.program_id JOIN athlete_profiles a ON a.current_program_id=p.id
-      WHERE a.id=? AND b.block_number=? AND d.weekday=? LIMIT 1`).bind(profileId, blockNumber, weekday).first<DayRow>();
+      WHERE a.id=? AND b.block_number=? AND d.weekday=? AND d.type='strength' LIMIT 1`).bind(profileId, blockNumber, weekday).first<DayRow>();
     if (!dayRow) return null;
     return this.ensureSessionForDay(profileId, dayRow.id, date, date);
   }
 
   async ensureSessionForDay(profileId: string, trainingDayId: string, scheduledDate: string, originalDate: string): Promise<string | null> {
     const owns = await this.database.prepare(`SELECT d.id FROM training_days d JOIN training_blocks b ON b.id=d.block_id
-      JOIN athlete_profiles a ON a.current_program_id=b.program_id WHERE a.id=? AND d.id=?`).bind(profileId, trainingDayId).first<{ id: string }>();
+      JOIN athlete_program_assignments apa ON apa.program_id=b.program_id
+      WHERE apa.athlete_profile_id=? AND d.id=? AND d.type='strength'
+      AND ?>=apa.effective_from AND (apa.effective_to IS NULL OR ?<=apa.effective_to)`)
+      .bind(profileId, trainingDayId, originalDate, originalDate).first<{ id: string }>();
     if (!owns) return null;
     const id = `workout:${profileId}:${trainingDayId}:${scheduledDate}`;
     await this.database.prepare(`INSERT INTO workout_sessions (id,athlete_profile_id,training_day_id,scheduled_date,original_scheduled_date,status)
       VALUES (?,?,?,?,?,'scheduled') ON CONFLICT(id) DO NOTHING`).bind(id, profileId, trainingDayId, scheduledDate, originalDate).run();
+    await this.database.prepare(`INSERT INTO workout_exercise_customizations
+      (workout_session_id,exercise_prescription_id,replacement_prescription_id,replacement_exercise_id,set_count,source)
+      SELECT ws.id,ep.id,pref.replacement_prescription_id,pref.replacement_exercise_id,ep.sets,'preference'
+      FROM workout_sessions ws JOIN exercise_prescriptions ep ON ep.training_day_id=ws.training_day_id
+      JOIN training_days d ON d.id=ep.training_day_id JOIN training_blocks b ON b.id=d.block_id
+      JOIN exercise_substitution_preferences pref ON pref.athlete_profile_id=ws.athlete_profile_id
+        AND pref.program_id=b.program_id AND pref.source_exercise_id=ep.exercise_id
+      WHERE ws.id=? AND ws.athlete_profile_id=? AND ws.scheduled_date>=pref.effective_from
+      ON CONFLICT(workout_session_id,exercise_prescription_id) DO NOTHING`).bind(id, profileId).run();
     return id;
   }
 
@@ -158,20 +184,20 @@ export class WorkoutRepository {
     return { original: originalDto, alternatives: Array.from(unique.values()).slice(0, 16) };
   }
 
-  async customizeExercise(profileId: string, sessionId: string, prescriptionId: string, input: { replacementPrescriptionId: string | null; sets: number; version: number | null }): Promise<{ ok: true; version: number } | { ok: false; reason: "not_found" | "conflict" | "locked" | "invalid_replacement" | "set_count_too_low" }> {
+  async customizeExercise(profileId: string, sessionId: string, prescriptionId: string, input: { replacementPrescriptionId: string | null; customExerciseName: string | null; applyToFuture: boolean; sets: number; version: number | null }): Promise<{ ok: true; version: number } | { ok: false; reason: "not_found" | "conflict" | "locked" | "invalid_replacement" | "set_count_too_low" }> {
     const ownership = await this.database.prepare(`SELECT ws.status,ep.exercise_id originalExerciseId,ep.primary_muscle primaryMuscle,
-      ep.category,b.program_id programId FROM workout_sessions ws JOIN exercise_prescriptions ep ON ep.training_day_id=ws.training_day_id
+      ep.category,b.program_id programId,ws.scheduled_date scheduledDate FROM workout_sessions ws JOIN exercise_prescriptions ep ON ep.training_day_id=ws.training_day_id
       JOIN training_days d ON d.id=ep.training_day_id JOIN training_blocks b ON b.id=d.block_id
       WHERE ws.id=? AND ws.athlete_profile_id=? AND ep.id=? LIMIT 1`)
       .bind(sessionId, profileId, prescriptionId)
-      .first<{ status: WorkoutStatus; originalExerciseId: string; primaryMuscle: string; category: string; programId: string }>();
+      .first<{ status: WorkoutStatus; originalExerciseId: string; primaryMuscle: string; category: string; programId: string; scheduledDate: string }>();
     if (!ownership) return { ok: false, reason: "not_found" };
     if (!["scheduled", "rescheduled", "in_progress"].includes(ownership.status)) return { ok: false, reason: "locked" };
 
     const [existing, logSummary] = await Promise.all([
-      this.database.prepare(`SELECT replacement_prescription_id,set_count,version FROM workout_exercise_customizations
+      this.database.prepare(`SELECT replacement_prescription_id,replacement_exercise_id,set_count,source,version FROM workout_exercise_customizations
         WHERE workout_session_id=? AND exercise_prescription_id=?`).bind(sessionId, prescriptionId)
-        .first<{ replacement_prescription_id: string | null; set_count: number; version: number }>(),
+        .first<{ replacement_prescription_id: string | null; replacement_exercise_id: string | null; set_count: number; source: string; version: number }>(),
       this.database.prepare(`SELECT COALESCE(MAX(sl.set_number),0) maxSet,COALESCE(SUM(sl.completed),0) completedSets
         FROM exercise_logs el LEFT JOIN set_logs sl ON sl.exercise_log_id=el.id
         WHERE el.workout_session_id=? AND el.exercise_prescription_id=?`).bind(sessionId, prescriptionId)
@@ -181,7 +207,14 @@ export class WorkoutRepository {
     if (input.sets < Number(logSummary?.maxSet ?? 0)) return { ok: false, reason: "set_count_too_low" };
 
     let replacementExerciseId = ownership.originalExerciseId;
-    if (input.replacementPrescriptionId) {
+    const customName = input.customExerciseName?.trim() || null;
+    if (customName) {
+      const custom = customExerciseIdentity(profileId, customName);
+      await this.database.prepare(`INSERT INTO exercises (id,slug,name,muscle_group,equipment,instructions) VALUES (?,?,?,?,NULL,?)
+        ON CONFLICT(id) DO UPDATE SET name=excluded.name,muscle_group=excluded.muscle_group`)
+        .bind(custom.id, custom.slug, customName, ownership.primaryMuscle, "Exercício informado pela atleta. Padronize técnica, amplitude e equipamento nas próximas exposições.").run();
+      replacementExerciseId = custom.id;
+    } else if (input.replacementPrescriptionId) {
       const replacement = await this.database.prepare(`SELECT ep.exercise_id exerciseId FROM exercise_prescriptions ep
         JOIN training_days d ON d.id=ep.training_day_id JOIN training_blocks b ON b.id=d.block_id
         WHERE ep.id=? AND b.program_id=? AND ep.exercise_id<>? AND ep.primary_muscle=? LIMIT 1`)
@@ -191,30 +224,69 @@ export class WorkoutRepository {
       replacementExerciseId = replacement.exerciseId;
     }
 
-    const replacementChanged = (existing?.replacement_prescription_id ?? null) !== input.replacementPrescriptionId;
+    const replacementChanged = (existing?.replacement_exercise_id ?? ownership.originalExerciseId) !== replacementExerciseId;
     if (replacementChanged && Number(logSummary?.completedSets ?? 0) > 0) return { ok: false, reason: "locked" };
 
     const customization = existing
-      ? this.database.prepare(`UPDATE workout_exercise_customizations SET replacement_prescription_id=?,set_count=?,version=version+1,updated_at=CURRENT_TIMESTAMP
+      ? this.database.prepare(`UPDATE workout_exercise_customizations SET replacement_prescription_id=?,replacement_exercise_id=?,set_count=?,source='session',version=version+1,updated_at=CURRENT_TIMESTAMP
           WHERE workout_session_id=? AND exercise_prescription_id=? AND version=?
           AND NOT EXISTS (SELECT 1 FROM exercise_logs count_el JOIN set_logs count_sl ON count_sl.exercise_log_id=count_el.id
             WHERE count_el.workout_session_id=? AND count_el.exercise_prescription_id=? AND count_sl.set_number>?)
           AND (?=0 OR NOT EXISTS (SELECT 1 FROM exercise_logs guard_el JOIN set_logs guard_sl ON guard_sl.exercise_log_id=guard_el.id
             WHERE guard_el.workout_session_id=? AND guard_el.exercise_prescription_id=? AND guard_sl.completed=1))`)
-        .bind(input.replacementPrescriptionId, input.sets, sessionId, prescriptionId, existing.version, sessionId, prescriptionId, input.sets, replacementChanged ? 1 : 0, sessionId, prescriptionId)
-      : this.database.prepare(`INSERT INTO workout_exercise_customizations (workout_session_id,exercise_prescription_id,replacement_prescription_id,set_count)
-          SELECT ?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM exercise_logs count_el JOIN set_logs count_sl ON count_sl.exercise_log_id=count_el.id
+        .bind(input.replacementPrescriptionId, replacementExerciseId === ownership.originalExerciseId ? null : replacementExerciseId, input.sets, sessionId, prescriptionId, existing.version, sessionId, prescriptionId, input.sets, replacementChanged ? 1 : 0, sessionId, prescriptionId)
+      : this.database.prepare(`INSERT INTO workout_exercise_customizations (workout_session_id,exercise_prescription_id,replacement_prescription_id,replacement_exercise_id,set_count,source)
+          SELECT ?,?,?,?,?, 'session' WHERE NOT EXISTS (SELECT 1 FROM exercise_logs count_el JOIN set_logs count_sl ON count_sl.exercise_log_id=count_el.id
             WHERE count_el.workout_session_id=? AND count_el.exercise_prescription_id=? AND count_sl.set_number>?)
           AND (?=0 OR NOT EXISTS (SELECT 1 FROM exercise_logs guard_el JOIN set_logs guard_sl ON guard_sl.exercise_log_id=guard_el.id
             WHERE guard_el.workout_session_id=? AND guard_el.exercise_prescription_id=? AND guard_sl.completed=1))
           ON CONFLICT(workout_session_id,exercise_prescription_id) DO NOTHING`)
-        .bind(sessionId, prescriptionId, input.replacementPrescriptionId, input.sets, sessionId, prescriptionId, input.sets, replacementChanged ? 1 : 0, sessionId, prescriptionId);
+        .bind(sessionId, prescriptionId, input.replacementPrescriptionId, replacementExerciseId === ownership.originalExerciseId ? null : replacementExerciseId, input.sets, sessionId, prescriptionId, input.sets, replacementChanged ? 1 : 0, sessionId, prescriptionId);
     const statements = [customization];
     if (replacementChanged) {
       statements.push(this.database.prepare(`UPDATE exercise_logs SET exercise_id=?,updated_at=CURRENT_TIMESTAMP
         WHERE workout_session_id=? AND exercise_prescription_id=?
         AND NOT EXISTS (SELECT 1 FROM set_logs WHERE exercise_log_id=exercise_logs.id AND completed=1)`)
         .bind(replacementExerciseId, sessionId, prescriptionId));
+    }
+    if (input.applyToFuture && replacementExerciseId !== ownership.originalExerciseId) {
+      statements.push(
+        this.database.prepare(`INSERT INTO exercise_substitution_preferences
+          (athlete_profile_id,program_id,source_exercise_id,replacement_exercise_id,replacement_prescription_id,effective_from)
+          VALUES (?,?,?,?,?,?) ON CONFLICT(athlete_profile_id,program_id,source_exercise_id) DO UPDATE SET
+          replacement_exercise_id=excluded.replacement_exercise_id,replacement_prescription_id=excluded.replacement_prescription_id,
+          effective_from=excluded.effective_from,version=exercise_substitution_preferences.version+1,updated_at=CURRENT_TIMESTAMP`)
+          .bind(profileId, ownership.programId, ownership.originalExerciseId, replacementExerciseId, input.replacementPrescriptionId, ownership.scheduledDate),
+        this.database.prepare(`INSERT INTO workout_exercise_customizations
+          (workout_session_id,exercise_prescription_id,replacement_prescription_id,replacement_exercise_id,set_count,source)
+          SELECT ws.id,ep.id,?,?,ep.sets,'preference' FROM workout_sessions ws
+          JOIN training_days d ON d.id=ws.training_day_id JOIN training_blocks b ON b.id=d.block_id
+          JOIN exercise_prescriptions ep ON ep.training_day_id=d.id
+          WHERE ws.athlete_profile_id=? AND b.program_id=? AND ep.exercise_id=? AND ws.scheduled_date>?
+          AND ws.status IN ('scheduled','rescheduled')
+          ON CONFLICT(workout_session_id,exercise_prescription_id) DO UPDATE SET
+            replacement_prescription_id=excluded.replacement_prescription_id,replacement_exercise_id=excluded.replacement_exercise_id,
+            source='preference',version=workout_exercise_customizations.version+1,updated_at=CURRENT_TIMESTAMP
+          WHERE workout_exercise_customizations.source='preference'
+            AND NOT EXISTS (SELECT 1 FROM exercise_logs el JOIN set_logs sl ON sl.exercise_log_id=el.id
+              WHERE el.workout_session_id=workout_exercise_customizations.workout_session_id
+                AND el.exercise_prescription_id=workout_exercise_customizations.exercise_prescription_id AND sl.completed=1)`)
+          .bind(input.replacementPrescriptionId, replacementExerciseId, profileId, ownership.programId, ownership.originalExerciseId, ownership.scheduledDate),
+      );
+    } else if (input.applyToFuture) {
+      statements.push(
+        this.database.prepare(`DELETE FROM exercise_substitution_preferences WHERE athlete_profile_id=? AND program_id=? AND source_exercise_id=?`)
+          .bind(profileId, ownership.programId, ownership.originalExerciseId),
+        this.database.prepare(`DELETE FROM workout_exercise_customizations WHERE source='preference'
+          AND workout_session_id IN (SELECT ws.id FROM workout_sessions ws JOIN training_days d ON d.id=ws.training_day_id
+            JOIN training_blocks b ON b.id=d.block_id WHERE ws.athlete_profile_id=? AND b.program_id=? AND ws.scheduled_date>?
+              AND ws.status IN ('scheduled','rescheduled'))
+          AND exercise_prescription_id IN (SELECT id FROM exercise_prescriptions WHERE exercise_id=?)
+          AND NOT EXISTS (SELECT 1 FROM exercise_logs el JOIN set_logs sl ON sl.exercise_log_id=el.id
+            WHERE el.workout_session_id=workout_exercise_customizations.workout_session_id
+              AND el.exercise_prescription_id=workout_exercise_customizations.exercise_prescription_id AND sl.completed=1)`)
+          .bind(profileId, ownership.programId, ownership.scheduledDate, ownership.originalExerciseId),
+      );
     }
     const results = await this.database.batch(statements);
     if ((results[0]!.meta.changes ?? 0) !== 1) {
@@ -233,13 +305,17 @@ export class WorkoutRepository {
 
   async getWorkout(profileId: string, sessionId: string): Promise<WorkoutDto | null> {
     const session = await this.database.prepare(`SELECT ws.id session_id,ws.scheduled_date,ws.status,ws.started_at,ws.finished_at,ws.notes,ws.version,
-      b.block_number,d.id,d.name,d.description,d.duration_min,d.duration_max FROM workout_sessions ws JOIN training_days d ON d.id=ws.training_day_id JOIN training_blocks b ON b.id=d.block_id
+      b.program_id,p.version program_version,COALESCE(apa.effective_from,a.program_start_date) program_start_date,
+      b.block_number,d.id,d.name,d.description,d.duration_min,d.duration_max FROM workout_sessions ws
+      JOIN athlete_profiles a ON a.id=ws.athlete_profile_id JOIN training_days d ON d.id=ws.training_day_id
+      JOIN training_blocks b ON b.id=d.block_id JOIN training_programs p ON p.id=b.program_id
+      LEFT JOIN athlete_program_assignments apa ON apa.athlete_profile_id=ws.athlete_profile_id AND apa.program_id=b.program_id
       WHERE ws.id=? AND ws.athlete_profile_id=? LIMIT 1`).bind(sessionId, profileId).first<SessionRow>();
     if (!session) return null;
 
     const queryResults = await this.database.batch([
-      this.database.prepare(`SELECT ep.id prescription_id,COALESCE(rep.exercise_id,ep.exercise_id) exercise_id,ep.exercise_id original_exercise_id,
-        COALESCE(NULLIF(ep.display_name,''),e.name) original_name,wxc.replacement_prescription_id,wxc.version customization_version,
+      this.database.prepare(`SELECT ep.id prescription_id,COALESCE(wxc.replacement_exercise_id,rep.exercise_id,ep.exercise_id) exercise_id,ep.exercise_id original_exercise_id,
+        COALESCE(NULLIF(ep.display_name,''),e.name) original_name,wxc.replacement_prescription_id,wxc.replacement_exercise_id,wxc.version customization_version,wxc.source customization_source,pref.version preference_version,
         COALESCE(NULLIF(rep.display_name,''),replacement.name,NULLIF(ep.display_name,''),e.name) name,
         COALESCE(rep.equipment,replacement.equipment,ep.equipment,e.equipment) equipment,
         COALESCE(NULLIF(rep.technique_notes,''),replacement.instructions,NULLIF(ep.technique_notes,''),e.instructions) instructions,
@@ -248,9 +324,11 @@ export class WorkoutRepository {
         COALESCE(NULLIF(rep.progression_notes,''),ep.progression_notes) progression_notes,ep.primary_muscle,ep.secondary_muscles,ep.category,ep.requires_selection,
         el.id log_id,el.completed log_completed,el.technique_confirmed,el.notes log_notes,el.version log_version
         FROM workout_sessions ws JOIN exercise_prescriptions ep ON ep.training_day_id=ws.training_day_id JOIN exercises e ON e.id=ep.exercise_id
+        JOIN training_days d ON d.id=ep.training_day_id JOIN training_blocks b ON b.id=d.block_id
         LEFT JOIN workout_exercise_customizations wxc ON wxc.workout_session_id=ws.id AND wxc.exercise_prescription_id=ep.id
         LEFT JOIN exercise_prescriptions rep ON rep.id=wxc.replacement_prescription_id
-        LEFT JOIN exercises replacement ON replacement.id=rep.exercise_id
+        LEFT JOIN exercises replacement ON replacement.id=COALESCE(wxc.replacement_exercise_id,rep.exercise_id)
+        LEFT JOIN exercise_substitution_preferences pref ON pref.athlete_profile_id=ws.athlete_profile_id AND pref.program_id=b.program_id AND pref.source_exercise_id=ep.exercise_id
         LEFT JOIN exercise_logs el ON el.workout_session_id=ws.id AND el.exercise_prescription_id=ep.id
         WHERE ws.id=? AND ws.athlete_profile_id=? ORDER BY ep.order_index`).bind(sessionId, profileId),
       this.database.prepare(`SELECT sl.id,sl.exercise_log_id,sl.set_number,sl.load_grams,sl.reps,sl.actual_rir,sl.notes,sl.completed,sl.version
@@ -276,6 +354,8 @@ export class WorkoutRepository {
       originalName: row.original_name,
       replacementPrescriptionId: row.replacement_prescription_id,
       customizationVersion: row.customization_version,
+      customizationSource: row.customization_source,
+      preferenceVersion: row.preference_version,
       name: row.name,
       equipment: row.equipment,
       instructions: row.instructions,
@@ -344,6 +424,9 @@ export class WorkoutRepository {
     const completed = exercises.reduce((sum, item) => sum + Math.min(item.sets, item.log?.sets.filter((set) => set.completed).length ?? 0), 0);
     return {
       id: session.session_id,
+      programId: session.program_id,
+      programVersion: session.program_version,
+      programStartDate: session.program_start_date,
       scheduledDate: session.scheduled_date,
       blockNumber: session.block_number,
       name: session.name,
@@ -383,7 +466,7 @@ export class WorkoutRepository {
     if (input.setNumber > ownership.set_count) return { conflict: true, version: 0 };
     const logId = `exercise-log:${sessionId}:${prescriptionId}`;
     await this.database.prepare(`INSERT INTO exercise_logs (id,workout_session_id,exercise_prescription_id,exercise_id)
-      VALUES (?,?,?,(SELECT COALESCE(replacement.exercise_id,ep.exercise_id) FROM workout_sessions ws
+      VALUES (?,?,?,(SELECT COALESCE(wxc.replacement_exercise_id,replacement.exercise_id,ep.exercise_id) FROM workout_sessions ws
         JOIN exercise_prescriptions ep ON ep.training_day_id=ws.training_day_id
         LEFT JOIN workout_exercise_customizations wxc ON wxc.workout_session_id=ws.id AND wxc.exercise_prescription_id=ep.id
         LEFT JOIN exercise_prescriptions replacement ON replacement.id=wxc.replacement_prescription_id
@@ -417,10 +500,22 @@ export class WorkoutRepository {
   }
 
   async getExerciseHistory(profileId: string, exerciseId: string): Promise<ExerciseHistoryDto | null> {
-    const exercise = await this.database.prepare(`SELECT e.id,COALESCE(NULLIF(ep.display_name,''),e.name) name,ep.primary_muscle muscleGroup,COALESCE(ep.equipment,e.equipment) equipment FROM exercises e
-      JOIN exercise_prescriptions ep ON ep.exercise_id=e.id JOIN training_days d ON d.id=ep.training_day_id
-      JOIN training_blocks b ON b.id=d.block_id JOIN athlete_profiles a ON a.current_program_id=b.program_id
-      WHERE a.id=? AND e.id=? ORDER BY b.block_number,ep.order_index LIMIT 1`).bind(profileId, exerciseId).first<{ id: string; name: string; muscleGroup: string; equipment: string | null }>();
+    const exercise = await this.database.prepare(`SELECT e.id,
+      COALESCE((SELECT COALESCE(NULLIF(ep.display_name,''),e.name) FROM exercise_prescriptions ep
+        JOIN training_days d ON d.id=ep.training_day_id JOIN training_blocks b ON b.id=d.block_id JOIN training_programs p ON p.id=b.program_id
+        WHERE p.athlete_profile_id=? AND ep.exercise_id=e.id ORDER BY CASE WHEN p.id=(SELECT current_program_id FROM athlete_profiles WHERE id=?) THEN 0 ELSE 1 END,b.block_number,ep.order_index LIMIT 1),e.name) name,
+      COALESCE((SELECT ep.primary_muscle FROM exercise_prescriptions ep JOIN training_days d ON d.id=ep.training_day_id
+        JOIN training_blocks b ON b.id=d.block_id JOIN training_programs p ON p.id=b.program_id
+        WHERE p.athlete_profile_id=? AND ep.exercise_id=e.id LIMIT 1),e.muscle_group) muscleGroup,
+      COALESCE((SELECT ep.equipment FROM exercise_prescriptions ep JOIN training_days d ON d.id=ep.training_day_id
+        JOIN training_blocks b ON b.id=d.block_id JOIN training_programs p ON p.id=b.program_id
+        WHERE p.athlete_profile_id=? AND ep.exercise_id=e.id AND ep.equipment IS NOT NULL LIMIT 1),e.equipment) equipment
+      FROM exercises e WHERE e.id=? AND (
+        EXISTS (SELECT 1 FROM exercise_prescriptions ep JOIN training_days d ON d.id=ep.training_day_id
+          JOIN training_blocks b ON b.id=d.block_id JOIN training_programs p ON p.id=b.program_id WHERE p.athlete_profile_id=? AND ep.exercise_id=e.id)
+        OR EXISTS (SELECT 1 FROM exercise_logs el JOIN workout_sessions ws ON ws.id=el.workout_session_id WHERE ws.athlete_profile_id=? AND el.exercise_id=e.id))`)
+      .bind(profileId, profileId, profileId, profileId, exerciseId, profileId, profileId)
+      .first<{ id: string; name: string; muscleGroup: string; equipment: string | null }>();
     if (!exercise) return null;
 
     const [historyResult, summaryResult] = await this.database.batch([

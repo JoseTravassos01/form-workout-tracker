@@ -43,7 +43,9 @@ docs/                    pesquisa, extração, mapeamento e operação
 
 O vínculo é `users → athlete_profiles → training_programs`. Sexo e username não decidem programa em código. Toda rota privada resolve a sessão, obtém `userId`/`athleteProfileId` do servidor e passa esse escopo ao service/repository. IDs enviados pelo cliente nunca substituem o escopo autenticado. Consultas de treino/log/medida usam joins ou filtros compostos pelo perfil autenticado; acesso cruzado resulta em 404 para não revelar existência.
 
-D1 contém usuários, sessões, perfis, programas/blocos/dias, exercícios/prescrições/cardio, sessões/logs, medidas, estado do programa, overrides, check-ins e atividades extras. Índices seguem os acessos principais (`user_id`, perfil+data, sessão+exercício, exercício+data). Foreign keys e `CHECK`s preservam enumerações/faixas. Seeds têm IDs determinísticos e `ON CONFLICT`, portanto são idempotentes.
+D1 contém usuários, sessões, perfis, programas/blocos/dias, exercícios/prescrições/cardio, sessões/logs, medidas, estado do programa, overrides, check-ins e atividades extras. `athlete_program_assignments` define a vigência temporal de cada versão: o calendário resolve a versão pela data, enquanto uma sessão já criada continua ligada ao seu `training_day_id` histórico. `exercise_id` é canônico e mantém cargas entre versões; `exercise_prescription_id` preserva a prescrição exata da sessão. Índices seguem os acessos principais (`user_id`, perfil+data, sessão+exercício, exercício+data). Foreign keys e `CHECK`s preservam enumerações/faixas. Seeds têm IDs determinísticos e `ON CONFLICT`, portanto são idempotentes.
+
+Trocas de exercício podem ser locais ou persistentes. `exercise_substitution_preferences` guarda a escolha para exposições futuras, e `workout_exercise_customizations` materializa a escolha por sessão sem reescrever programa, sessão concluída ou histórico.
 
 Mutations sensíveis carregam `version`; updates usam `WHERE id = ? AND version = ?`, incrementam versão e retornam 409 se outro dispositivo venceu. Criação de série usa `UNIQUE(exercise_log_id,set_number)` + upsert com versão. Operações compostas usam `D1.batch`, que a [documentação D1](https://developers.cloudflare.com/d1/worker-api/d1-database/) define como transacional.
 
@@ -70,7 +72,7 @@ A UI só declara “Sincronizado” depois de 2xx. Mutations sem resposta ficam 
 
 ## Programa científico
 
-Os componentes não contêm nomes de exercícios. Seeds em `worker/data/programs` correspondem linha a linha a `docs/PROGRAM_EXTRACTION.md`; validadores asseguram invariantes descritas em `docs/RESEARCH_MAPPING.md`. Sugestão de progressão e recuperação são funções puras parametrizadas pela política do programa. A aplicação sugere e pede confirmação; jamais reescreve prescrição ou carga automaticamente.
+Os componentes não contêm nomes de exercícios. Seeds em `worker/data/programs` mantêm as versões históricas e as fichas atuais derivadas dos dois PDFs em `new_correct_train/`; validadores asseguram as invariantes e decisões de transcrição descritas em `docs/RESEARCH_MAPPING.md`. Sugestão de progressão e recuperação são funções puras parametrizadas pela política do programa. A aplicação sugere e pede confirmação; jamais reescreve prescrição ou carga automaticamente.
 
 ## Observabilidade e erros
 

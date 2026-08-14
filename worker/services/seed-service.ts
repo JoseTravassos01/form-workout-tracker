@@ -1,4 +1,4 @@
-import { femaleProgram, maleProgram } from "../data/programs";
+import { femaleProgramV1, femaleProgramV2, femaleProgramV3, maleProgramV1, maleProgramV2 } from "../data/programs";
 import { validateProgramSeed } from "../domain/program";
 import { hashPassword } from "../lib/crypto";
 import { SeedRepository } from "../repositories/seed-repository";
@@ -19,7 +19,7 @@ export class SeedService {
   constructor(private readonly env: AppBindings) {}
 
   async run(): Promise<{ accounts: number; statements: number; programs: string[] }> {
-    const validations = [validateProgramSeed(maleProgram), validateProgramSeed(femaleProgram)];
+    const validations = [femaleProgramV1, femaleProgramV2, femaleProgramV3, maleProgramV1, maleProgramV2].map(validateProgramSeed);
     const errors = validations.flatMap((item) => item.errors);
     if (errors.length > 0) throw new Error(`Seed científico inválido: ${errors.join(" | ")}`);
 
@@ -31,7 +31,8 @@ export class SeedService {
         passwordHash: await hashPassword(required(this.env.MALE_PASSWORD, "MALE_PASSWORD")),
         displayName: required(this.env.MALE_DISPLAY_NAME, "MALE_DISPLAY_NAME"),
         programStartDate: dateOrToday(this.env.MALE_PROGRAM_START_DATE),
-        program: maleProgram,
+        program: maleProgramV2,
+        historicalPrograms: [maleProgramV1],
       },
       {
         userId: "user:female:initial",
@@ -40,7 +41,8 @@ export class SeedService {
         passwordHash: await hashPassword(required(this.env.FEMALE_PASSWORD, "FEMALE_PASSWORD")),
         displayName: required(this.env.FEMALE_DISPLAY_NAME, "FEMALE_DISPLAY_NAME"),
         programStartDate: dateOrToday(this.env.FEMALE_PROGRAM_START_DATE),
-        program: femaleProgram,
+        program: femaleProgramV3,
+        historicalPrograms: [femaleProgramV1, femaleProgramV2],
       },
     ];
 

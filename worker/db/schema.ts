@@ -102,6 +102,22 @@ export const trainingPrograms = sqliteTable(
   ],
 );
 
+export const athleteProgramAssignments = sqliteTable(
+  "athlete_program_assignments",
+  {
+    athleteProfileId: text("athlete_profile_id").notNull().references(() => athleteProfiles.id, { onDelete: "cascade" }),
+    programId: text("program_id").notNull().references(() => trainingPrograms.id),
+    effectiveFrom: text("effective_from").notNull(),
+    effectiveTo: text("effective_to"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    primaryKey({ columns: [table.athleteProfileId, table.programId] }),
+    index("athlete_program_assignments_period_idx").on(table.athleteProfileId, table.effectiveFrom, table.effectiveTo),
+    check("athlete_program_assignments_period", sql`${table.effectiveTo} IS NULL OR ${table.effectiveTo} >= ${table.effectiveFrom}`),
+  ],
+);
+
 export const trainingBlocks = sqliteTable(
   "training_blocks",
   {
@@ -181,6 +197,7 @@ export const exercisePrescriptions = sqliteTable(
     category: text("category").notNull(),
     isEffectiveSet: integer("is_effective_set", { mode: "boolean" }).notNull().default(true),
     requiresSelection: integer("requires_selection", { mode: "boolean" }).notNull().default(false),
+    directGluteMedius: integer("direct_glute_medius", { mode: "boolean" }).notNull().default(false),
   },
   (table) => [
     uniqueIndex("exercise_prescriptions_day_order_uq").on(table.trainingDayId, table.orderIndex),
@@ -189,6 +206,25 @@ export const exercisePrescriptions = sqliteTable(
     check("exercise_prescriptions_reps", sql`${table.repsMin} > 0 AND ${table.repsMax} >= ${table.repsMin}`),
     check("exercise_prescriptions_rir", sql`${table.rirMin} BETWEEN 0 AND 10 AND ${table.rirMax} BETWEEN ${table.rirMin} AND 10`),
     check("exercise_prescriptions_rest", sql`${table.restSecondsMin} > 0 AND ${table.restSecondsMax} >= ${table.restSecondsMin}`),
+  ],
+);
+
+export const exerciseSubstitutionPreferences = sqliteTable(
+  "exercise_substitution_preferences",
+  {
+    athleteProfileId: text("athlete_profile_id").notNull().references(() => athleteProfiles.id, { onDelete: "cascade" }),
+    programId: text("program_id").notNull().references(() => trainingPrograms.id),
+    sourceExerciseId: text("source_exercise_id").notNull().references(() => exercises.id),
+    replacementExerciseId: text("replacement_exercise_id").notNull().references(() => exercises.id),
+    replacementPrescriptionId: text("replacement_prescription_id").references(() => exercisePrescriptions.id),
+    effectiveFrom: text("effective_from").notNull(),
+    version: integer("version").notNull().default(1),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({ columns: [table.athleteProfileId, table.programId, table.sourceExerciseId] }),
+    index("exercise_substitution_preferences_replacement_idx").on(table.replacementExerciseId),
+    check("exercise_substitution_preferences_distinct", sql`${table.sourceExerciseId} <> ${table.replacementExerciseId}`),
   ],
 );
 
@@ -262,6 +298,26 @@ export const workoutSessions = sqliteTable(
     uniqueIndex("workout_sessions_profile_day_date_uq").on(table.athleteProfileId, table.trainingDayId, table.scheduledDate),
     index("workout_sessions_profile_date_idx").on(table.athleteProfileId, table.scheduledDate),
     check("workout_sessions_status", sql`${table.status} IN ('scheduled','in_progress','completed','missed','skipped','rescheduled','partial')`),
+  ],
+);
+
+export const workoutExerciseCustomizations = sqliteTable(
+  "workout_exercise_customizations",
+  {
+    workoutSessionId: text("workout_session_id").notNull().references(() => workoutSessions.id, { onDelete: "cascade" }),
+    exercisePrescriptionId: text("exercise_prescription_id").notNull().references(() => exercisePrescriptions.id),
+    replacementPrescriptionId: text("replacement_prescription_id").references(() => exercisePrescriptions.id),
+    replacementExerciseId: text("replacement_exercise_id").references(() => exercises.id),
+    setCount: integer("set_count").notNull(),
+    source: text("source").notNull().default("session"),
+    version: integer("version").notNull().default(1),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({ columns: [table.workoutSessionId, table.exercisePrescriptionId] }),
+    index("workout_exercise_customizations_replacement_idx").on(table.replacementPrescriptionId),
+    check("workout_exercise_customizations_set_count", sql`${table.setCount} BETWEEN 1 AND 20`),
+    check("workout_exercise_customizations_source", sql`${table.source} IN ('session','preference')`),
   ],
 );
 

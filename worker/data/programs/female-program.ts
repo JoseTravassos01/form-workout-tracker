@@ -34,7 +34,7 @@ const upper = (rir: readonly [number, number], advanced: boolean) => [
   x("rosca-scott", "Rosca Scott máquina/cabo", 2, [10, 15], advanced ? [1, 1] : rir, [60, 90], "Bíceps", "biceps", "Braço permanece no apoio; técnica estável."),
 ];
 
-export const femaleProgram: ProgramSeed = {
+export const femaleProgramV1: ProgramSeed = {
   key: "female-2026",
   name: "Hipertrofia feminina — prioridade em glúteos e inferiores",
   description: "Programa anual com três sessões de inferiores e uma sessão superior mínima de exatamente seis exercícios.",

@@ -10,9 +10,10 @@ export const programRoutes = new Hono<AppEnvironment>()
   .get("/", async (context) => {
     const profileId = context.get("athleteProfileId");
     const repository = new ProgramRepository(context.env.DB);
-    const [state, blocks] = await Promise.all([new TrainingService(context.env.DB).effectiveState(profileId), repository.getBlocks(profileId)]);
+    const service = new TrainingService(context.env.DB);
+    const [state, blocks, focus] = await Promise.all([service.effectiveState(profileId), repository.getBlocks(profileId), service.focusSummary(profileId)]);
     if (!state) throw new HttpError(404, "PROGRAM_NOT_FOUND", "Programa não encontrado.");
-    return context.json({ program: { id: state.program_id, name: state.program_name, description: state.program_description, sourceResearch: state.source_research, version: state.program_version }, state: { currentWeek: state.currentWeek, currentBlock: state.currentBlock, manualOverride: state.manual_override === 1, version: state.state_version }, blocks });
+    return context.json({ program: { id: state.program_id, name: state.program_name, description: state.program_description, sourceResearch: state.source_research, version: state.program_version }, state: { currentWeek: state.currentWeek, currentBlock: state.currentBlock, manualOverride: state.manual_override === 1, version: state.state_version }, focus, blocks });
   })
   .get("/blocks/:id", async (context) => {
     const result = await new ProgramRepository(context.env.DB).getBlock(context.get("athleteProfileId"), context.req.param("id"));

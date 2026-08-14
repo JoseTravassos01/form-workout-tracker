@@ -1,140 +1,88 @@
-# Mapeamento pesquisa → aplicação
+# Mapeamento das fichas atuais
 
-Este é o contrato de rastreabilidade entre as duas fontes históricas e tudo que o produto pode prescrever, sugerir ou explicar. A extração de cada linha de treino está em `PROGRAM_EXTRACTION.md`; os documentos integrais estão em `docs/research/` e os PDFs originais em `pesquisas/`.
+Este documento registra como os dois PDFs de `new_correct_train/` chegam ao banco e à interface. As pesquisas em `pesquisas/` e as transcrições em `docs/research/treino-*.md` continuam preservadas como fontes das versões históricas.
 
-## Identidade e isolamento
+## Versões ativas
 
-| Entidade/experiência | Fonte | Regra de implementação |
-|---|---|---|
-| Programa masculino | Pesquisa masculina, título e contexto inicial; seções “Estratégia anual” e “Treinos completos” | `training_program` versionado associado ao `athlete_profile`; nenhuma decisão consulta username/sexo |
-| Programa feminino | Pesquisa feminina, §§1–8 | Programa independente associado por FK; nunca reutiliza prescrição masculina |
-| Perfil masculino | Pesquisa masculina: 1,90 m, 96 kg, retorno após ~1 ano; prioridades panturrilha/abdômen | Altura/peso inicial podem ser seedados como fatos da pesquisa; nome/data/credencial vêm de secret/configuração |
-| Perfil feminino | Pesquisa feminina §1: dados antropométricos não informados | Campos desconhecidos nulos; não inventar carga, calorias, altura/peso ou metas |
-| Tema individual | Requisito do produto, não pesquisa | `theme_key`/`accent_color` pertencem ao perfil e não mudam o conteúdo do programa |
-
-## Calendário e blocos
-
-| O que a UI exibe | Masculino | Feminino | Persistência/derivação |
+| Perfil | Fonte atual | Versão | Versões preservadas |
 |---|---|---|---|
-| 4 blocos anuais | Readaptação; Acumulação; Especialização; Consolidação | Base técnica/volume moderado; Hipertrofia progressiva; Especialização glúteos/pernas; Consolidação/alta qualidade | `training_blocks`; 13 semanas por bloco é convenção documentada por falta de distribuição exata da semana 52 |
-| Semana/dia atual | Pesquisa define meses e dias da semana, não data civil inicial | Idem | `program_start_date` + timezone do atleta + eventual `program_state` manual; função pura `calculateCurrentWeek` |
-| Divisão | Seg Upper A; ter Lower A; qua Upper B; sex Lower B | Seg inferiores A; ter superior; qua inferiores B; sex inferiores C | `training_days` por bloco, nunca JSX hardcoded |
-| Cardio | Qui/sáb/dom, doses por fase | Qui/sáb/dom, doses e alternativa HIIT por fase | `cardio_prescriptions`; aparece como item de calendário e gera log próprio |
-| Reagendamento | Pesquisa não redefine o programa | Pesquisa não redefine o programa | `calendar_overrides` cria exceção sem alterar `training_days`; `resolveScheduledWorkout` prioriza override válido |
-| Perdido/descanso/extra | Operação de acompanhamento, não prescrição científica | Igual | Status/log separado; não altera seed nem progressão anual |
+| Feminino | `new_correct_train/Programa de Treino Glúteo Médio.pdf` | `female-2026:2026.3` | `2026.1` e `2026.2` |
+| Masculino | `new_correct_train/Programa Anual de Hipertrofia e Recomposição.pdf` | `male-2026:2026.2` | `2026.1` |
 
-## Treinos e exercícios
+O seed cria IDs determinísticos e usa `ON CONFLICT`, por isso pode ser repetido. Ele ativa apenas a versão mais nova de cada perfil e não apaga programas, sessões, séries, cargas, medidas ou calendário anteriores.
 
-Cada exercício, ordem, série, faixa de reps, faixa/direção de RIR, descanso, músculo e nota mostrados vem das tabelas de “Treinos completos” e está enumerado em `PROGRAM_EXTRACTION.md`.
+## Preservação do histórico
 
-| Superfície | Mapeamento |
+`athlete_program_assignments` determina a versão válida por data. Cada sessão continua vinculada ao `training_day_id` e ao `exercise_prescription_id` usados quando foi criada. O `exercise_id` permanece canônico entre versões, de modo que o histórico de um exercício compartilhado — por exemplo Hip Thrust, Hack Squat ou Cadeira Abdutora — continua reunido.
+
+Trocas persistentes ficam em `exercise_substitution_preferences` e personalizações da sessão em `workout_exercise_customizations`. Nenhuma delas reescreve a ficha-base nem uma sessão antiga.
+
+## Programa feminino V3
+
+Divisão semanal do PDF:
+
+| Dia | Sessão |
 |---|---|
-| Dashboard “Hoje” | Resolve o dia semanal do bloco do perfil autenticado; nome e contagem vêm de `training_days` + `exercise_prescriptions`; duração só aparece quando a pesquisa informa ou quando houver histórico real suficiente claramente rotulado como estimativa observada |
-| Semana atual | Une quatro dias de força, três itens de cardio/recuperação e logs/overrides; não cria sessão extra |
-| Treino de hoje | Renderiza prescrições ordenadas do banco. Inputs registram `load_kg`, reps, RIR real e conclusão sem modificar a prescrição |
-| Última vez/histórico | Consulta somente logs anteriores do mesmo atleta + exercício; não usa valores hipotéticos das pesquisas |
-| Cronômetro | Usa `rest_seconds_min/max` extraído. Exibe a faixa; início automático usa o mínimo como convenção operacional explícita e permite +30/pular/pausar |
-| Concluir exercício/treino | Estado operacional calculado por logs; não é regra de treinamento. Conclusão exige persistência confirmada |
-| Histórico/gráficos | Carga, reps, volume e datas são dados reais do usuário; notas técnicas e faixas vêm da prescrição/fonte |
+| Segunda | Lower A — Glúteo Médio + Glúteo Máximo |
+| Terça | Upper — Manutenção de Superiores |
+| Quarta | Lower B — Quadríceps + Glúteo Médio |
+| Quinta | Descanso total / recuperação ativa |
+| Sexta | Lower C — Posteriores + Glúteo Máximo |
+| Sábado | Especialização curta — Glúteo Médio + Panturrilha + Core |
+| Domingo | Descanso total |
 
-### Invariantes femininas verificáveis
+O superior possui exatamente seis exercícios: dois de costas, dois de ombros, um de tríceps e um de bíceps, sem peitoral. O trabalho direto de glúteo médio ocorre somente segunda, quarta e sábado. O contador não inclui Búlgaro, prancha lateral ou outros estímulos secundários.
 
-Em todos os blocos há exatamente uma sessão superior, com exatamente seis prescrições: duas marcadas `back`, duas `shoulders`, uma `triceps`, uma `biceps`; nenhuma `chest`. Há três sessões inferiores (segunda, quarta, sexta). Um validador de seed e testes impedem qualquer divergência.
+Volume direto adotado por bloco: `11 / 13 / 15 / 12` séries semanais.
 
-### Invariantes masculinas verificáveis
+### Decisão sobre divergências internas do PDF feminino
 
-Há exatamente quatro sessões Upper/Lower nos dias fixos; panturrilhas aparecem quatro vezes por semana na ficha completa de cada bloco e o volume direto cruza 11/14/15/16; abdômen progride 6/10/10/10 séries diretas conforme a tabela de volume da pesquisa.
+O documento contém tabelas cuja soma literal criaria quatro exposições diretas e volumes superiores ao próprio resumo anual. Para não inventar volume nem contrariar a estrutura declarada, a implementação trata como autoridade:
 
-## Progressão
+1. o resumo anual de `11 / 13 / 15 / 12` séries;
+2. a regra textual de três exposições diretas por semana;
+3. a distribuição segunda, quarta e sábado.
 
-| Regra exibida/sugerida | Fonte masculina | Fonte feminina | Comportamento do software |
-|---|---|---|---|
-| Dupla progressão | “Seu sistema de progressão principal” | §13 | Função pura recebe prescrição + última sessão comparável; nunca usa IA |
-| Aumentar carga | Todas as séries no topo, RIR/técnica corretos; menor incremento, ~2–5% | Topo em todas; ~2,5–5% pernas/compostos, menor incremento isoladores | Retorna `increase_load` com faixa/texto; usuário confirma carga. Técnica deve ser confirmada; sem confirmação não sugere aumento |
-| Manter carga | Exemplo 12/11/10; uma sessão ruim não estagnação | Performance estável/subindo, buscar +1 rep | Retorna `hold_and_add_reps` |
-| Queda | Investigar sono/alimentação/ordem/descanso/fadiga; ≥2 exposições importam | Queda ≥2 sessões + sinais de fadiga | Retorna `hold_and_review_recovery`; nunca diagnostica |
-| Adicionar séries | Somente após ~2–3 semanas e cinco critérios | Só prioritários após ~4–6 semanas e recuperação boa | Apenas recomendação textual/checklist; não altera seed/prescrição automaticamente |
-| Trocar exercício | Dor recorrente, estagnação prolongada, anatomia/equipamento, melhor estímulo/fadiga | Dor persistente, incompatibilidade, padronização, equipamento, estagnação | Sinaliza decisão; não substitui sozinho |
+Sexta mantém posteriores e glúteo máximo, sem criar uma quarta exposição direta. Essa resolução está explícita no seed e nos testes.
 
-Ambiguidade feminina preservada: a narrativa diz “todas ou quase todas”, mas o fluxograma/exemplo usa todas. A regra automatizada conservadora exige todas; “quase todas” requer confirmação humana e não gera aumento automático.
+## Programa masculino V2
 
-## Recuperação e deload
+Divisão semanal do PDF:
 
-| Estado/ação | Masculino | Feminino |
-|---|---|---|
-| Verde | Performance estável/melhor e recuperado | Reps/carga subindo, sono normal, DOMS resolvida, sem dor articular |
-| Amarelo | Sessão ruim isolada: não mudar; recuperação local ruim: manter carga/reduzir 1–2 séries | 1–2 sinais leves ou treino ruim isolado: manter, não adicionar série, +1 RIR temporário |
-| Vermelho | ≥2 exposições, sem explicação: −20–30%; fadiga sistêmica: deload | ≥2 quedas + múltiplos sinais: reduzir volume/deload 5–7 dias |
-| Gatilho deload | ≥2 sinais persistentes listados na pesquisa | Queda objetiva ≥2 sessões + ≥2 sinais listados |
-| Protocolo | Séries 40–60%; carga 90–95%/longe da falha; RIR 4–5; cardio −20–30%; 4 sessões curtas possíveis | Séries −~50%; carga 85–90% ou menor; RIR 4–5; retirar HIIT; manter exercícios/dias |
+| Dia | Sessão |
+|---|---|
+| Segunda | Upper Body A — Peitoral + Dorsais |
+| Terça | Lower Body A — Quadríceps + Posteriores |
+| Quarta | Push B — Peitoral + Deltoides + Tríceps |
+| Quinta | Descanso obrigatório da musculação + Zone 2 |
+| Sexta | Pull B — Costas + Bíceps |
+| Sábado | Legs B — Posteriores + Glúteos + Quadríceps |
+| Domingo | Especialização curta — Panturrilha + Abdômen + Zone 2 |
 
-O check-in pergunta somente pelos sinais enumerados nas pesquisas: performance, sono, DOMS, dor articular, motivação, sensação de carga/fadiga e perda inesperada de RIR. `evaluateRecoveryStatus` recebe também dados objetivos de duas sessões quando exigidos. Mensagens usam “sinais compatíveis com fadiga acumulada” e “considere deload”; nunca “overtraining” nem diagnóstico.
+Cada bloco transcreve sua própria tabela de exercícios, séries, repetições, RIR e descanso. A ficha detalhada totaliza 16 séries semanais de panturrilha e 12 de abdômen. O resumo narrativo do PDF menciona 16 séries de abdômen, mas as três prescrições detalhadas somam 12; a aplicação usa as fichas executáveis, e não completa quatro séries sem uma prescrição correspondente.
 
-## Cardio
+## Progressão e recuperação
 
-| Programa/fase | Prescrição de fonte | UI/log |
-|---|---|---|
-| Masculino M1 | Qui 30–35 RPE 3–4; sáb 35–45 RPE 3–4; dom 20–40 RPE 2–3; sem HIIT | Modalidade, faixa de duração, RPE, objetivo; registra duração/modalidade/RPE real |
-| Masculino M2 | 35–45; 40–50; 30–45 nas mesmas intensidades | Idem |
-| Masculino M3–M4 | Qui 35–50; sáb 45–60; dom caminhada 30–45 ou protocolo opcional de bike | Alternativa só aparece como opcional e condicionada à performance normal |
-| Feminino todos | Qui 30–40 bike/elíptico RPE 3–4; sáb 30–45 caminhada inclinada/bike RPE 3–4; dom caminhada 40–60 RPE 2–3 | Idem |
-| Feminino F3–F4 | Sábado pode substituir parte por 6×1 forte/2 leve, máximo 1×/sem, se recuperação muito boa | HIIT opt-in; alerta para remover primeiro se pernas pesadas/performance cair |
+- A progressão usa faixa de repetições, RIR, técnica confirmada e desempenho anterior.
+- Atingir o topo em todas as séries gera apenas a mensagem para considerar aumento de carga.
+- A carga nunca é aumentada automaticamente.
+- Uma sessão isolada abaixo do esperado não muda a ficha.
+- Deload e redução de volume permanecem recomendações orientadas pelos sinais previstos no programa.
+- O cronômetro usa exatamente o descanso gravado na prescrição.
 
-Nenhum programa calcula FC com `220 − idade`, pois as pesquisas explicitamente proíbem inventar idade/FC-alvo. “Zone 2” é operacionalizado por RPE/teste da fala conforme a fonte.
+## Calendário
 
-## Peso, medidas e progresso
+O calendário é derivado de `training_days`, `cardio_prescriptions`, atribuições temporais e reagendamentos; os nomes não ficam fixos no JSX. Em telas pequenas, a visão mensal mostra uma grade compacta sem rolagem horizontal e uma agenda legível do dia selecionado. A visão semanal usa cartões verticais.
 
-| Recurso | Masculino | Feminino | Cálculo |
-|---|---|---|---|
-| Peso | Idealmente diário, média móvel 7 dias | 3–7 manhãs/sem, média semanal | `calculateWeeklyWeightAverage`; nunca tratar uma medição isolada como tendência |
-| Cintura | Semanal | Cada 4 semanas | Frequência recomendada por programa |
-| Quadril | Semanal/quinzenal | Cada 4 semanas (quadril/glúteos) | Mesmo ponto/condição |
-| Braço/coxa/panturrilha | 3–4 semanas | Coxa/panturrilha 4 semanas; braço 6–8 | Histórico e gráfico, sem meta inventada |
-| Gordura | Tendência, bioimpedância não absoluta | 8–12 semanas, mesmo método | Campo opcional, rotulado estimativa |
-| Strength | Carga/reps/RIR toda sessão | Igual | Melhor carga, reps, volume e tendência vêm apenas de logs reais |
+## Invariantes testadas
 
-## Base científica
-
-`/app/science` usa resumos curtos dos seguintes trechos, mantendo a fonte por programa:
-
-- Volume/frequência: resumos executivos e seções de volume.
-- RIR/falha: tabelas iniciais + regras globais/progressão.
-- Descanso/ROM: regras gerais e observações de exercício.
-- Progressão: seção masculina “Seu sistema de progressão principal” e feminina §13.
-- Cardio: seções específicas de cardio concorrente.
-- Deload: seções masculinas/femininas de deload.
-- Panturrilhas/abdômen: estratégias específicas de cada pesquisa.
-- Glúteos/posteriores e ciclo menstrual: somente pesquisa feminina.
-- Recomposição, gordura localizada e memória muscular: somente pesquisa masculina.
-
-Referências clicáveis são importadas das listas finais dos documentos (PMID/DOI/URL). A aplicação declara: “Programa criado a partir de pesquisa científica realizada em 2026.” Não reproduz nem inventa citação ausente.
-
-## Elementos de produto sem alegação científica
-
-Login, cookies, PWA, retry offline, calendário visual, streak, toasts, gráficos, tema, navegação, versionamento otimista e status de sincronização são infraestrutura/UX. Eles podem organizar e registrar o programa, mas não são apresentados como recomendações científicas.
-
-## Checklist obrigatório de validação seed × fonte
-
-1. Quantidade de blocos = 4 por programa.
-2. Dias de musculação = seg/ter/qua/sex em todos os blocos.
-3. Todos os exercícios e ordens batem com `PROGRAM_EXTRACTION.md`.
-4. Séries, reps, RIR e descanso batem linha a linha.
-5. Feminino superior = exatamente 6 e distribuição 2/2/1/1 em todos os blocos.
-6. Cardios e alternativas condicionais batem por bloco.
-7. Protocolos de progressão/deload permanecem separados por programa.
-8. Slots ambíguos/individualizados continuam marcados para confirmação.
-9. Nenhuma carga inicial é seedada a partir de exemplos hipotéticos.
-10. Nenhuma senha/credencial real existe nos dados versionados.
-
-### Resultado da conferência
-
-Conferência manual concluída em 13/08/2026, comparando os arquivos estruturados
-`worker/data/programs/male-program.ts` e
-`worker/data/programs/female-program.ts` com a extração linha a linha e, em
-seguida, com os dois documentos-fonte. Os dez itens acima foram confirmados.
-As invariantes mecânicas (quatro blocos, semanas, dias, faixas e composição do
-superior feminino) também são verificadas por `tests/domain/program.test.ts`.
-Não foi encontrada divergência de exercício, ordem, séries, repetições, RIR,
-descanso ou cardio. As decisões que a fonte deixa abertas permanecem rotuladas
-como ambiguidade/alternativa dependente de confirmação humana; não foram
-convertidas em prescrição automática.
+1. Todas as versões antigas continuam válidas e seedáveis.
+2. Os aliases atuais apontam para Female V3 e Male V2.
+3. O seed repetido não duplica entidades.
+4. O histórico V1 continua consultável após ativar versões novas.
+5. Novas sessões usam a versão atual correta para cada perfil.
+6. O superior feminino tem seis exercícios e nenhum peitoral.
+7. Glúteo médio direto aparece em três dias e soma `11 / 13 / 15 / 12`.
+8. Quinta-feira não contém musculação pesada nos programas atuais.
+9. A progressão não altera carga automaticamente.
+10. Nenhuma migration contém `DROP`, `DELETE` ou `TRUNCATE`.

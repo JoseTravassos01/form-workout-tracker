@@ -21,19 +21,25 @@ async function login(page: Page, username: string, password: string) {
 }
 
 async function rescheduleMondayToToday(page: Page) {
-  const result = await page.evaluate(async ({ mondayDate, todayDate }) => {
-    const calendar = await fetch(`/api/calendar?from=${mondayDate}&to=${todayDate}`).then((response) => response.json()) as {
-      items: Array<{ date: string; kind: string; templateId?: string; override?: { version?: number } }>;
+  const searchEndDate = new Date(`${monday}T12:00:00Z`);
+  searchEndDate.setUTCDate(searchEndDate.getUTCDate() + 14);
+  const result = await page.evaluate(async ({ mondayDate, searchEnd, todayDate }) => {
+    const program = await fetch("/api/program").then((response) => response.json()) as { program: { id: string } };
+    const calendar = await fetch(`/api/calendar?from=${mondayDate}&to=${searchEnd}`).then((response) => response.json()) as {
+      items: Array<{ date: string; kind: string; templateId?: string; status: string; override?: { version?: number; originalDate?: string } }>;
     };
-    const source = calendar.items.find((item) => item.date === mondayDate && item.kind === "strength");
+    const belongsToCurrentProgram = (item: { templateId?: string }) => item.templateId?.startsWith(`${program.program.id}:`) === true;
+    const arrival = calendar.items.find((item) => item.date === todayDate && item.kind === "strength" && belongsToCurrentProgram(item) && !["missed", "rest", "skipped"].includes(item.status));
+    if (arrival) return { status: 200, body: { alreadyScheduled: true } };
+    const source = calendar.items.find((item) => item.kind === "strength" && belongsToCurrentProgram(item) && new Date(`${item.date}T12:00:00Z`).getUTCDay() === 1);
     if (!source?.templateId) throw new Error("Treino de segunda não encontrado no calendário.");
     const response = await fetch("/api/calendar/overrides", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ originalDate: mondayDate, newDate: todayDate, trainingDayId: source.templateId, action: "rescheduled", reason: "E2E", version: source.override?.version ?? null }),
+      body: JSON.stringify({ originalDate: source.override?.originalDate ?? source.date, newDate: todayDate, trainingDayId: source.templateId, action: "rescheduled", reason: "E2E", version: source.override?.version ?? null }),
     });
     return { status: response.status, body: await response.json() };
-  }, { mondayDate: monday, todayDate: today });
+  }, { mondayDate: monday, searchEnd: searchEndDate.toISOString().slice(0, 10), todayDate: today });
   expect(result.status).toBeLessThan(300);
 }
 
@@ -63,6 +69,19 @@ test.beforeAll(async () => {
 test("abre uma ficha futura pelo calendário e adiciona uma série", async ({ page }) => {
   await login(page, required("MALE_USERNAME"), required("MALE_PASSWORD"));
   await page.goto("/app/calendar");
+  const monthGrid = page.locator(".calendar-grid.month");
+  await expect(monthGrid).toBeVisible();
+  await expect(page.locator(".mobile-calendar-agenda")).toBeVisible();
+  const mobileLayout = await monthGrid.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const viewportWidth = element.ownerDocument.defaultView?.innerWidth ?? element.ownerDocument.documentElement.clientWidth;
+    return { fitsViewport: rect.left >= 0 && rect.right <= viewportWidth + 1, hasHorizontalOverflow: element.scrollWidth > element.clientWidth + 1 };
+  });
+  expect(mobileLayout).toEqual({ fitsViewport: true, hasHorizontalOverflow: false });
+
+  await page.getByRole("button", { name: "SEMANA" }).click();
+  const weekGrid = page.locator(".calendar-grid.week");
+  await expect(weekGrid).toBeVisible();
   const futureStrengthDay = page.locator(".day-event.event-strength").last();
   await expect(futureStrengthDay).toBeVisible();
   await futureStrengthDay.click();
@@ -75,8 +94,8 @@ test("abre uma ficha futura pelo calendário e adiciona uma série", async ({ pa
   const originalSetCount = Number(await plannedSets.textContent());
   await exercise.getByRole("button", { name: "Adicionar uma série" }).click();
   await expect(plannedSets).toHaveText(String(originalSetCount + 1));
-  await exercise.getByRole("button", { name: "SALVAR NESTE DIA" }).click();
-  await expect(page.getByText("Treino deste dia personalizado.")).toBeVisible();
+  await exercise.getByRole("button", { name: "SALVAR ALTERAÇÃO" }).click();
+  await expect(page.getByText("Alteração salva para este treino e para as próximas semanas.")).toBeVisible();
   await expect(exercise.locator(".exercise-heading p")).toContainText(`${originalSetCount + 1} séries`);
 });
 
@@ -85,7 +104,7 @@ test("fluxos críticos dos dois perfis permanecem isolados", async ({ page }) =>
   await expect(page.getByRole("heading", { name: required("MALE_DISPLAY_NAME") })).toBeVisible();
   await rescheduleMondayToToday(page);
   await page.goto("/app");
-  await expect(page.getByRole("heading", { name: /Upper A/ })).toBeVisible();
+  await expect(page.locator(".today-hero h2")).toBeVisible();
   await page.getByRole("link", { name: /INICIAR TREINO|CONTINUAR TREINO|VER TREINO/ }).click();
   await registerFirstSetAndFinish(page);
   await page.goto("/app/profile");
@@ -95,12 +114,12 @@ test("fluxos críticos dos dois perfis permanecem isolados", async ({ page }) =>
   await login(page, required("FEMALE_USERNAME"), required("FEMALE_PASSWORD"));
   await expect(page.getByRole("heading", { name: required("FEMALE_DISPLAY_NAME") })).toBeVisible();
   await expect(page.getByText(required("MALE_DISPLAY_NAME"))).toHaveCount(0);
-  const crossAccessStatus = await page.evaluate(async () => (await fetch("/api/program/blocks/program:male-2026:2026.1:block:1")).status);
+  const crossAccessStatus = await page.evaluate(async () => (await fetch("/api/program/blocks/program:male-2026:2026.2:block:1")).status);
   expect(crossAccessStatus).toBe(404);
 
   await rescheduleMondayToToday(page);
   await page.goto("/app");
-  await expect(page.getByRole("heading", { name: /Inferiores A/ })).toBeVisible();
+  await expect(page.locator(".today-hero h2")).toBeVisible();
   await page.getByRole("link", { name: /INICIAR TREINO|CONTINUAR TREINO|VER TREINO/ }).click();
   await registerFirstSetAndFinish(page);
 

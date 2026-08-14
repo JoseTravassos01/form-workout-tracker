@@ -8,13 +8,15 @@ import { useApi } from "../../lib/use-api";
 interface DashboardDto {
   workout: WorkoutDto | null;
   cardio: null | { id: string; modality: string; durationMin: number; durationMax: number; intensity: string; rpeMin: number; rpeMax: number };
-  state: { week: number; block: number; blockName: string; today: string };
+  state: { week: number; block: number; blockName: string; today: string; programVersion: string; profileSex: "male" | "female" };
   weeklyCompleted: number;
   weeklyScheduled: number;
   completedTotal: number;
   streak: number;
   nextSession: null | { date: string; name: string; kind: string; status: string };
   weights: Array<{ measuredAt: string; weightKg: number }>;
+  latestLoads: Array<{ exerciseId: string; name: string; loadKg: number; reps: number; scheduledDate: string }>;
+  focus: null | { title: string; frequency: number; plannedSets: number; completedSets: number; exercises: Array<{ exerciseId: string; name: string; plannedSets: number; completedSets: number; latestPerformance: null | { loadKg: number; reps: number; scheduledDate: string } }> };
   recovery: null | { status: string; recommendation: string };
 }
 
@@ -30,11 +32,13 @@ export function DashboardPage() {
     <div className="page-stack dashboard-page">
       <PageHeader eyebrow={`${greeting()},`} title={me?.athlete.name ?? "Atleta"} action={<div className="week-badge"><span>SEMANA</span><strong>{data.state.week}<small>/52</small></strong></div>} />
       <div className="block-strip"><span>BLOCO {data.state.block}</span><strong>{data.state.blockName}</strong><div><span style={{ width: `${Math.min(100, data.state.week / 52 * 100)}%` }} /></div></div>
+      {data.focus && <Card className="focus-summary"><div><span className="eyebrow">FOCO ATUAL</span><h2>{data.focus.title}</h2><p>{data.focus.frequency} exposições diretas na semana</p></div><div className="focus-count"><strong>{data.focus.completedSets}<small>/{data.focus.plannedSets}</small></strong><span>séries concluídas</span></div></Card>}
       {data.workout ? (
         <Card className="today-hero">
           <div className="today-label"><span>HOJE</span><StatusPill status={data.workout.status} /></div>
           <div className="today-main"><div><span className="workout-index">TREINO DO DIA</span><h2>{data.workout.name}</h2><p>{data.workout.description || "Sessão prevista pelo programa atual."}</p></div><div className="hero-icon"><Dumbbell /></div></div>
           <div className="workout-meta"><span><Timer /> {data.workout.durationMin ? `${data.workout.durationMin}–${data.workout.durationMax} min` : "Tempo pelo seu ritmo"}</span><span><Dumbbell /> {data.workout.exercises.length} exercícios</span><span><Check /> {data.workout.completionPercent}%</span></div>
+          {data.cardio && <div className="workout-cardio-note"><TrendingUp /><span><strong>Depois do treino: {data.cardio.modality}</strong>{data.cardio.durationMin}–{data.cardio.durationMax} min · RPE {data.cardio.rpeMin}–{data.cardio.rpeMax}</span></div>}
           <Link className="button button-primary hero-cta" to={`/app/workout/${encodeURIComponent(data.workout.id)}`}><Play fill="currentColor" size={18} /> {data.workout.status === "in_progress" ? "CONTINUAR TREINO" : data.workout.status === "completed" ? "VER TREINO" : "INICIAR TREINO"}<ArrowRight /></Link>
         </Card>
       ) : data.cardio ? (
@@ -46,6 +50,7 @@ export function DashboardPage() {
         <Card className="metric-card"><div className="metric-icon"><Scale /></div><div><span>Último peso</span><strong>{latest ? `${latest.weightKg.toFixed(1)} kg` : "—"}</strong>{diff != null && <small className={diff <= 0 ? "trend-good" : ""}>{diff <= 0 ? <TrendingDown /> : <TrendingUp />}{diff > 0 ? "+" : ""}{diff.toFixed(1)} kg</small>}</div></Card>
         <Card className="metric-card"><div className="metric-icon"><BatteryCharging /></div><div><span>Recuperação</span><strong className="recovery-value">{data.recovery?.status ? data.recovery.status.toUpperCase() : "Pendente"}</strong><Link to="/app/check-in">Fazer check-in</Link></div></Card>
       </div></section>
+      {data.latestLoads.length > 0 && <Card className="latest-loads"><div><span className="eyebrow">ÚLTIMAS CARGAS</span><h3>Referências recentes</h3></div><div>{data.latestLoads.map((item) => <Link key={item.exerciseId} to={`/app/exercises/${encodeURIComponent(item.exerciseId)}`}><span>{item.name}</span><strong>{item.loadKg} kg × {item.reps}</strong></Link>)}</div></Card>}
       <Card className="next-card"><div><span className="eyebrow">PRÓXIMA SESSÃO</span><h3>{data.nextSession?.name ?? "Acompanhe sem adivinhar"}</h3><p>{data.nextSession ? `${new Date(`${data.nextSession.date}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "short" })} · ${data.nextSession.kind === "cardio" ? "Cardio" : "Treino"}` : "Registre carga, repetições e RIR para que a sugestão siga as regras da pesquisa."}</p></div><Link to={data.nextSession ? "/app/calendar" : "/app/progress/strength"} aria-label="Ver próximo passo"><ChevronRight /></Link></Card>
     </div>
   );
