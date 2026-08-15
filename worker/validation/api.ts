@@ -121,3 +121,66 @@ export const cardioStartSchema = z.object({
   scheduledDate: isoDateSchema,
   version: versionSchema.nullable().default(null),
 }).strict();
+
+export const personalCardioPlanSchema = z.object({
+  startDate: isoDateSchema,
+  endDate: isoDateSchema,
+  weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+  modality: z.string().trim().min(2).max(120),
+  durationMin: z.number().int().min(1).max(600),
+  durationMax: z.number().int().min(1).max(600),
+  rpeMin: z.number().int().min(0).max(10),
+  rpeMax: z.number().int().min(0).max(10),
+  notes: z.string().max(2000).default(""),
+  recurrenceScope: z.enum(["once", "week", "month"]),
+  idempotencyKey: z.string().uuid(),
+}).strict().superRefine((value, context) => {
+  if (value.endDate < value.startDate) context.addIssue({ code: "custom", message: "A data final deve ser igual ou posterior à inicial.", path: ["endDate"] });
+  if (value.durationMax < value.durationMin) context.addIssue({ code: "custom", message: "A duração máxima deve ser igual ou maior que a mínima.", path: ["durationMax"] });
+  if (value.rpeMax < value.rpeMin) context.addIssue({ code: "custom", message: "O RPE máximo deve ser igual ou maior que o mínimo.", path: ["rpeMax"] });
+});
+
+export const hydrationLogSchema = z.object({
+  localDate: isoDateSchema,
+  loggedAt: z.string().datetime({ offset: true }),
+  amountMl: z.number().int().min(1).max(5000),
+  idempotencyKey: z.string().uuid(),
+}).strict();
+
+export const hydrationSettingsSchema = z.object({
+  dailyGoalMl: z.number().int().min(250).max(10000),
+  reminderEnabled: z.boolean(),
+  reminderTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  version: versionSchema.nullable(),
+}).strict();
+
+const customExerciseSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  sets: z.number().int().min(1).max(20),
+  repsMin: z.number().int().min(1).max(200),
+  repsMax: z.number().int().min(1).max(200),
+  rirMin: z.number().int().min(0).max(10),
+  rirMax: z.number().int().min(0).max(10),
+  restSeconds: z.number().int().min(15).max(600),
+  notes: z.string().max(1000).default(""),
+}).strict().superRefine((value, context) => {
+  if (value.repsMax < value.repsMin) context.addIssue({ code: "custom", message: "A repetição máxima deve ser igual ou maior que a mínima.", path: ["repsMax"] });
+  if (value.rirMax < value.rirMin) context.addIssue({ code: "custom", message: "O RIR máximo deve ser igual ou maior que o mínimo.", path: ["rirMax"] });
+});
+
+const customTrainingDaySchema = z.object({
+  weekday: z.number().int().min(1).max(7),
+  name: z.string().trim().min(2).max(120),
+  exercises: z.array(customExerciseSchema).min(1).max(12),
+}).strict();
+
+export const customProgramSchema = z.object({
+  name: z.string().trim().min(3).max(120),
+  durationWeeks: z.union([z.literal(4), z.literal(12)]),
+  startDate: isoDateSchema,
+  days: z.array(customTrainingDaySchema).min(1).max(7),
+  idempotencyKey: z.string().uuid(),
+}).strict().superRefine((value, context) => {
+  const weekdays = value.days.map((day) => day.weekday);
+  if (new Set(weekdays).size !== weekdays.length) context.addIssue({ code: "custom", message: "Escolha cada dia da semana apenas uma vez.", path: ["days"] });
+});

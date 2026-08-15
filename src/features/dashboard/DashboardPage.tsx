@@ -1,4 +1,4 @@
-import { ArrowRight, BatteryCharging, CalendarClock, Check, ChevronRight, Dumbbell, Flame, Play, Scale, Timer, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, BatteryCharging, CalendarClock, Check, ChevronRight, Droplets, Dumbbell, Flame, Play, Scale, Timer, TrendingDown, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { WorkoutDto } from "../../../shared/api";
 import { useAuth } from "../../app/AuthProvider";
@@ -25,6 +25,9 @@ function greeting() { const hour = new Date().getHours(); return hour < 12 ? "Bo
 export function DashboardPage() {
   const { me } = useAuth();
   const { data, loading, error, refresh } = useApi<DashboardDto>("/api/dashboard");
+  const now = new Date();
+  const hydrationDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const { data: hydration } = useApi<{ todayMl: number; settings: { dailyGoalMl: number } }>(`/api/hydration?date=${hydrationDate}`);
   if (loading) return <div className="page-stack"><Skeleton className="hero-skeleton" /><div className="metric-grid"><Skeleton className="metric-skeleton" /><Skeleton className="metric-skeleton" /></div></div>;
   if (error || !data) return <EmptyState icon={<BatteryCharging />} title="Não foi possível carregar seu dia" text="Verifique sua conexão e tente novamente."><button className="button button-primary" onClick={() => void refresh()}>Tentar novamente</button></EmptyState>;
   const latest = data.weights[0]; const previous = data.weights[1]; const diff = latest && previous ? latest.weightKg - previous.weightKg : null;
@@ -49,6 +52,7 @@ export function DashboardPage() {
         <Card className="metric-card"><div className="metric-icon"><Flame /></div><div><span>Sequência atual</span><strong>{data.streak}</strong><small>{data.streak === 1 ? "treino seguido" : "treinos seguidos"} · {data.completedTotal} no total</small></div></Card>
         <Card className="metric-card"><div className="metric-icon"><Scale /></div><div><span>Último peso</span><strong>{latest ? `${latest.weightKg.toFixed(1)} kg` : "—"}</strong>{diff != null && <small className={diff <= 0 ? "trend-good" : ""}>{diff <= 0 ? <TrendingDown /> : <TrendingUp />}{diff > 0 ? "+" : ""}{diff.toFixed(1)} kg</small>}</div></Card>
         <Card className="metric-card"><div className="metric-icon"><BatteryCharging /></div><div><span>Recuperação</span><strong className="recovery-value">{data.recovery?.status ? data.recovery.status.toUpperCase() : "Pendente"}</strong><Link to="/app/check-in">Fazer check-in</Link></div></Card>
+        <Card className="metric-card"><div className="metric-icon"><Droplets /></div><div><span>Água hoje</span><strong>{hydration ? `${hydration.todayMl} ml` : "—"}</strong><small>{hydration ? `Meta: ${hydration.settings.dailyGoalMl} ml` : "Carregando"}</small><Link to="/app/hydration">Atualizar água</Link></div></Card>
       </div></section>
       {data.latestLoads.length > 0 && <Card className="latest-loads"><div><span className="eyebrow">ÚLTIMAS CARGAS</span><h3>Referências recentes</h3></div><div>{data.latestLoads.map((item) => <Link key={item.exerciseId} to={`/app/exercises/${encodeURIComponent(item.exerciseId)}`}><span>{item.name}</span><strong>{item.loadKg} kg × {item.reps}</strong></Link>)}</div></Card>}
       <Card className="next-card"><div><span className="eyebrow">PRÓXIMA SESSÃO</span><h3>{data.nextSession?.name ?? "Acompanhe sem adivinhar"}</h3><p>{data.nextSession ? `${new Date(`${data.nextSession.date}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "short" })} · ${data.nextSession.kind === "cardio" ? "Cardio" : "Treino"}` : "Registre carga, repetições e RIR para que a sugestão siga as regras da pesquisa."}</p></div><Link to={data.nextSession ? "/app/calendar" : "/app/progress/strength"} aria-label="Ver próximo passo"><ChevronRight /></Link></Card>

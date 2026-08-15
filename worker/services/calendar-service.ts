@@ -20,6 +20,8 @@ interface GeneratedCalendarItem {
   override?: CalendarOverrideRow;
   session?: CalendarWorkoutStatusRow | CalendarCardioStatusRow | null;
   activity?: ExtraActivityRow;
+  source?: "scientific" | "custom" | "personal";
+  planVersion?: number;
 }
 
 export class CalendarService {
@@ -29,10 +31,11 @@ export class CalendarService {
     const program = await new ProgramRepository(this.database).getContext(profileId);
     if (!program) return null;
     const repository = new CalendarRepository(this.database);
-    const [templates, statuses, activities] = await Promise.all([
+    const [templates, statuses, activities, personalCardioPlans] = await Promise.all([
       repository.getTemplates(profileId),
       repository.getStatuses(profileId, from, to),
       new ActivityRepository(this.database).list(profileId, from, to),
+      repository.getPersonalCardioPlans(profileId, from, to),
     ]);
     const actualToday = parseISO(dateInTimezone(new Date(), program.timezone));
     const manualWeekStart = startOfWeek(actualToday, { weekStartsOn: 1 });
@@ -46,17 +49,20 @@ export class CalendarService {
     const items = eachDayOfInterval({ start: parseISO(from), end: parseISO(to) }).flatMap<GeneratedCalendarItem>((date) => {
       const dateString = format(date, "yyyy-MM-dd");
       const activeTemplates = templates.filter((item) => dateString >= item.effective_from && (item.effective_to == null || dateString <= item.effective_to));
+      const scientificTemplates = activeTemplates.filter((item) => item.source === "scientific");
       // Uma atualização feita no mesmo dia pode deixar a versão anterior e a nova
       // válidas nessa data (as vigências usam precisão de dia). Nesse único caso,
       // a ficha atual vence; sessões já criadas continuam presas ao template antigo.
-      const assignment = activeTemplates.find((item) => item.program_id === program.program_id) ?? activeTemplates[0];
-      if (!assignment) return [{ date: dateString, kind: "rest" as const, name: "Descanso", status: "scheduled", block: 1, week: 1 }];
-      const calculatedWeek = weekFor(date, assignment.program_id, assignment.effective_from);
-      const block = calculateCurrentBlock(calculatedWeek);
       const weekday = getISODay(date);
-      const dayTemplates = activeTemplates.filter((item) => item.program_id === assignment.program_id && item.block_number === block && item.weekday === weekday);
-      if (dayTemplates.length === 0) return [{ date: dateString, kind: "rest" as const, name: "Descanso", status: "scheduled", block, week: calculatedWeek }];
-      return dayTemplates.map((template) => {
+      const assignment = scientificTemplates.find((item) => item.program_id === program.program_id) ?? scientificTemplates[0];
+      const calculatedWeek = assignment ? weekFor(date, assignment.program_id, assignment.effective_from) : 1;
+      const block = assignment ? calculateCurrentBlock(calculatedWeek) : 1;
+      const dayTemplates = assignment ? scientificTemplates.filter((item) => item.program_id === assignment.program_id && item.block_number === block && item.weekday === weekday) : [];
+      const customTemplates = activeTemplates.filter((item) => item.source === "custom" && item.weekday === weekday);
+      // Em um dia definido pelo ciclo pessoal, ele substitui apenas a exibição
+      // científica daquele dia. O programa ativo e todo o histórico permanecem intactos.
+      const scheduledTemplates = customTemplates.length > 0 ? customTemplates : dayTemplates;
+      const generated: GeneratedCalendarItem[] = scheduledTemplates.map((template) => {
         const status = template.kind === "strength"
           ? statuses.workouts.find((item) => item.trainingDayId === template.id && item.scheduledDate === dateString)
           : template.kind === "cardio" ? statuses.cardio.find((item) => item.cardioPrescriptionId === template.id && item.scheduledDate === dateString) : undefined;
@@ -78,8 +84,30 @@ export class CalendarService {
           week: calculatedWeek,
           override,
           session: status ?? null,
+          source: template.source,
         };
       });
+      for (const plan of personalCardioPlans) {
+        if (dateString < plan.startDate || dateString > plan.endDate || !plan.weekdays.split(",").map(Number).includes(weekday)) continue;
+        const session = statuses.cardio.find((item) => item.personalCardioPlanId === plan.id && item.scheduledDate === dateString);
+        generated.push({
+          date: dateString,
+          kind: "cardio",
+          templateId: plan.id,
+          name: plan.modality,
+          subtitle: plan.notes || "Cardio pessoal",
+          durationMin: plan.durationMin,
+          durationMax: plan.durationMax,
+          rpeMin: plan.rpeMin,
+          rpeMax: plan.rpeMax,
+          status: session?.status ?? "scheduled",
+          session: session ?? null,
+          source: "personal",
+          planVersion: plan.version,
+        });
+      }
+      if (generated.length > 0) return generated;
+      return [{ date: dateString, kind: "rest" as const, name: "Descanso", status: "scheduled", block, week: calculatedWeek, source: "scientific" as const }];
     });
     const rescheduledArrivals: GeneratedCalendarItem[] = statuses.overrides
       .filter((item) => item.action === "rescheduled" && item.newDate && item.newDate >= from && item.newDate <= to)

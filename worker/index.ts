@@ -13,6 +13,7 @@ import { programRoutes } from "./routes/program-routes";
 import { recoveryRoutes } from "./routes/recovery-routes";
 import { scienceRoutes } from "./routes/science-routes";
 import { seedRoutes } from "./routes/seed-routes";
+import { hydrationRoutes } from "./routes/hydration-routes";
 import type { AppEnvironment } from "./types";
 
 const app = new Hono<AppEnvironment>();
@@ -45,6 +46,7 @@ privateApi.route("/program", programRoutes);
 privateApi.route("/recovery-checkins", recoveryRoutes);
 privateApi.route("/science", scienceRoutes);
 privateApi.route("/cardio", cardioRoutes);
+privateApi.route("/hydration", hydrationRoutes);
 app.route("/api", privateApi);
 
 app.notFound((context) => context.json({ error: { code: "NOT_FOUND", message: "Rota não encontrada.", requestId: context.get("requestId") } }, 404));

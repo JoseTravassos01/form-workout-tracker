@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:e2e": "node scripts/start-e2e.mjs",
     "build": "vite build",
     "build:dev": "node scripts/build-cloudflare-env.mjs dev",
     "preview": "vite preview",

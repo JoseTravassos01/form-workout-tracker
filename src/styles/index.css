@@ -290,3 +290,74 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 @media (prefers-reduced-motion:reduce) { *,*:before,*:after { animation-duration:.01ms!important; animation-iteration-count:1!important; scroll-behavior:auto!important; transition-duration:.01ms!important; } }
+
+/* Personal planning and hydration */
+.program-header-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.hydration-hero { padding:26px; display:flex; align-items:center; gap:24px; }
+.hydration-ring { --hydration-progress:0deg; width:118px; height:118px; flex:0 0 118px; display:grid; place-items:center; border-radius:50%; background:radial-gradient(circle at center,var(--surface) 57%,transparent 59%),conic-gradient(#66bfff var(--hydration-progress),var(--surface-3) 0); color:#66bfff; position:relative; }
+.hydration-ring svg { width:34px; height:34px; transform:translateY(-11px); }
+.hydration-ring strong { position:absolute; bottom:24px; color:var(--text); font-size:14px; }
+.hydration-hero > div:last-child > span { color:#66bfff; font-size:9px; font-weight:900; letter-spacing:.16em; }
+.hydration-hero h2 { margin:6px 0; font-size:32px; }
+.hydration-hero h2 small { color:var(--muted); font-size:16px; }
+.hydration-hero p,.hydration-settings p { margin:0; color:var(--muted); line-height:1.55; }
+.hydration-quick,.hydration-settings { padding:22px; display:flex; flex-direction:column; gap:16px; }
+.hydration-quick h2,.hydration-settings h2 { margin:0; font-size:18px; }
+.hydration-buttons { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; }
+.hydration-custom { display:grid; grid-template-columns:1fr auto; gap:10px; align-items:end; }
+.hydration-custom label,.hydration-settings label,.custom-program-form label,.cardio-plan-modal label { display:flex; flex-direction:column; gap:6px; color:var(--muted); font-size:10px; font-weight:750; }
+.hydration-custom input,.hydration-settings input,.custom-program-form input,.custom-program-form select,.cardio-plan-modal input,.cardio-plan-modal select,.cardio-plan-modal textarea { min-height:44px; padding:8px 11px; border:1px solid var(--border); border-radius:10px; background:var(--surface); color:var(--text); }
+.hydration-settings > div:first-child { display:flex; align-items:flex-start; gap:12px; }
+.hydration-settings > div:first-child > svg { color:#66bfff; flex:0 0 22px; }
+.hydration-settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.hydration-settings > small { color:var(--subtle); line-height:1.5; }
+.hydration-history { padding:12px 20px; }
+.hydration-history > div { display:flex; justify-content:space-between; gap:15px; padding:12px 0; border-bottom:1px solid var(--border-soft); text-transform:capitalize; }
+.hydration-history > div:last-child { border-bottom:0; }
+.hydration-history span,.hydration-history > p { color:var(--muted); }
+.custom-program-intro { display:flex; gap:15px; align-items:flex-start; padding:20px; }
+.custom-program-intro > svg { flex:0 0 25px; color:var(--accent); }
+.custom-program-intro h2 { margin:0 0 5px; }
+.custom-program-intro p { margin:0; color:var(--muted); line-height:1.55; }
+.custom-program-form { padding:22px; display:flex; flex-direction:column; gap:18px; }
+.custom-program-basics { display:grid; grid-template-columns:2fr 1fr 1fr; gap:10px; }
+.custom-days { display:flex; flex-direction:column; gap:12px; }
+.custom-day { padding:17px; background:var(--surface); }
+.custom-day-head,.custom-exercise-title { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.custom-day-head > div { display:flex; align-items:center; gap:8px; }
+.custom-day-head svg { color:var(--accent); }
+.custom-day-head button,.custom-exercise-title button { width:32px; height:32px; display:grid; place-items:center; border:0; background:transparent; color:var(--muted); cursor:pointer; }
+.custom-day-head button svg,.custom-exercise-title button svg { width:16px; }
+.custom-day-basics { display:grid; grid-template-columns:1fr 2fr; gap:10px; margin:13px 0; }
+.custom-exercises { display:flex; flex-direction:column; gap:10px; margin-bottom:12px; }
+.custom-exercise { padding:14px; border:1px solid var(--border); border-radius:12px; display:flex; flex-direction:column; gap:10px; }
+.custom-exercise-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; }
+.custom-program-list { display:flex; flex-direction:column; gap:9px; }
+.custom-program-list > .card { padding:17px; display:flex; justify-content:space-between; align-items:center; gap:15px; }
+.custom-program-list .card > div { display:flex; flex-direction:column; gap:4px; }
+.custom-program-list span,.custom-program-list small { color:var(--muted); }
+.custom-program-list button { border:0; background:transparent; color:var(--danger); cursor:pointer; }
+.custom-program-list em { color:var(--subtle); font-style:normal; }
+.cardio-plan-modal { display:flex; flex-direction:column; gap:13px; }
+.cardio-plan-modal h2 { margin:0; }
+.weekday-picker { margin:0; padding:12px; border:1px solid var(--border); border-radius:11px; display:flex; flex-wrap:wrap; gap:6px; }
+.weekday-picker legend { padding:0 4px; color:var(--muted); font-size:10px; }
+.weekday-picker button { min-width:42px; height:36px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--muted); cursor:pointer; }
+.weekday-picker button.active { border-color:var(--accent); background:var(--accent-soft); color:var(--accent); }
+
+@media (max-width:720px) {
+  .program-header-actions { gap:5px; }
+  .program-header-actions .button { padding-inline:9px; }
+  .hydration-hero { padding:18px; gap:15px; }
+  .hydration-ring { width:88px; height:88px; flex-basis:88px; }
+  .hydration-ring svg { width:25px; transform:translateY(-8px); }
+  .hydration-ring strong { bottom:17px; font-size:11px; }
+  .hydration-hero h2 { font-size:24px; }
+  .hydration-buttons { grid-template-columns:1fr; }
+  .hydration-custom { grid-template-columns:1fr; }
+  .custom-program-basics,.custom-day-basics { grid-template-columns:1fr; }
+  .custom-exercise-grid { grid-template-columns:repeat(2,1fr); }
+  .custom-program-form { padding:14px; }
+  .custom-day { padding:12px; }
+  .custom-program-list > .card { align-items:flex-start; }
+}

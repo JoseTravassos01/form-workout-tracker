@@ -17,6 +17,8 @@ const StrengthProgressPage = lazy(() => import("../features/progress/StrengthPro
 const CheckInPage = lazy(() => import("../features/recovery/CheckInPage").then((module) => ({ default: module.CheckInPage })));
 const SciencePage = lazy(() => import("../features/science/SciencePage").then((module) => ({ default: module.SciencePage })));
 const ProfilePage = lazy(() => import("../features/profile/ProfilePage").then((module) => ({ default: module.ProfilePage })));
+const HydrationPage = lazy(() => import("../features/hydration/HydrationPage").then((module) => ({ default: module.HydrationPage })));
+const CustomProgramPage = lazy(() => import("../features/program/CustomProgramPage").then((module) => ({ default: module.CustomProgramPage })));
 
 function PageLoader() {
   return <div className="page-stack" aria-label="Carregando página"><Skeleton className="workout-head-skeleton" /><Skeleton className="chart-skeleton" /></div>;
@@ -31,6 +33,7 @@ export function App() {
       <Route path="calendar" element={<CalendarPage />} />
       <Route path="program" element={<ProgramPage />} />
       <Route path="program/:blockId" element={<BlockPage />} />
+      <Route path="program/custom/create" element={<CustomProgramPage />} />
       <Route path="workout/:sessionId" element={<WorkoutPage />} />
       <Route path="exercises/:exerciseId" element={<ExerciseHistoryPage />} />
       <Route path="progress" element={<ProgressPage />} />
@@ -39,6 +42,7 @@ export function App() {
       <Route path="check-in" element={<CheckInPage />} />
       <Route path="science" element={<SciencePage />} />
       <Route path="profile" element={<ProfilePage />} />
+      <Route path="hydration" element={<HydrationPage />} />
     </Route>
     <Route path="*" element={<Navigate to="/app" replace />} />
   </Routes></Suspense>;

@@ -21,9 +21,9 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   webServer: process.env.E2E_EXTERNAL_SERVER ? undefined : {
-    command: "npm run dev -- --host 127.0.0.1",
+    command: "npm run dev:e2e -- --host 127.0.0.1",
     url: "http://127.0.0.1:5173/api/health",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
   projects: [{ name: "mobile-chromium", use: { ...devices["Pixel 7"] } }],
