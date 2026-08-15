@@ -20,6 +20,17 @@ npm run db:migrate:remote
 
 Migrations devem ser testadas primeiro em `dev`. Antes de uma migration destrutiva em producao, exporte ou faça backup do D1.
 
+## Secret da geração por IA
+
+A criação assistida de ciclos pessoais usa a API da DeepSeek. `DEEPSEEK_API_KEY` deve ser configurada separadamente em cada Worker porque secrets não são herdados entre ambientes:
+
+```powershell
+npx wrangler secret put DEEPSEEK_API_KEY --env dev
+npx wrangler secret put DEEPSEEK_API_KEY --env=""
+```
+
+A chave pertence à conta da DeepSeek e nunca deve ser colocada no Git ou no `wrangler.jsonc`. O modelo e o limite diário são configurações não secretas em `wrangler.jsonc`.
+
 ## Cloudflare Builds
 
 A conexao inicial com o GitHub exige autorizacao interativa no painel da Cloudflare. Em **Workers & Pages**, conecte o mesmo repositorio a cada Worker usando estas configuracoes:

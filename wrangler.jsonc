@@ -18,7 +18,9 @@
   ],
   "vars": {
     "APP_ENV": "production",
-    "SESSION_TTL_DAYS": "14"
+    "SESSION_TTL_DAYS": "14",
+    "DEEPSEEK_MODEL": "deepseek-v4-flash",
+    "AI_DAILY_GENERATION_LIMIT": "10"
   },
   "observability": {
     "enabled": true,
@@ -43,7 +45,9 @@
       ],
       "vars": {
         "APP_ENV": "development",
-        "SESSION_TTL_DAYS": "14"
+        "SESSION_TTL_DAYS": "14",
+        "DEEPSEEK_MODEL": "deepseek-v4-flash",
+        "AI_DAILY_GENERATION_LIMIT": "10"
       }
     }
   }

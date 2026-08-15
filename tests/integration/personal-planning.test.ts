@@ -26,6 +26,21 @@ beforeAll(async () => {
 });
 
 describe("planejamento pessoal e hidratação", () => {
+  it("mantém a geração por IA autenticada e inativa sem secret", async () => {
+    const cookie = await login(env.MALE_USERNAME, env.MALE_PASSWORD);
+    const status = await request("/api/program/ai/status", { headers: { cookie } });
+    expect(status.status).toBe(200);
+    expect(await status.json()).toMatchObject({ available: false, remainingToday: 10 });
+
+    const generated = await request("/api/program/ai/generate", {
+      method: "POST",
+      headers: { cookie, origin, "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "Quero um treino de hipertrofia quatro vezes por semana.", durationWeeks: 4, startDate: futureIsoWeekday(1) }),
+    });
+    expect(generated.status).toBe(503);
+    expect(await env.DB.prepare("SELECT COUNT(*) count FROM ai_workout_generations").first<number>("count")).toBe(0);
+  });
+
   it("registra água, preserva isolamento e atualiza lembrete com controle de versão", async () => {
     const maleCookie = await login(env.MALE_USERNAME, env.MALE_PASSWORD);
     const femaleCookie = await login(env.FEMALE_USERNAME, env.FEMALE_PASSWORD);

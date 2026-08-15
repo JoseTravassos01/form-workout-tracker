@@ -2,7 +2,7 @@
 
 Aplicação full-stack, mobile-first e Cloudflare-native para acompanhar programas anuais privados de treinamento. O frontend React e a API Hono são publicados como uma única unidade no Cloudflare Workers; os dados persistentes ficam no D1.
 
-Os programas não são gerados por IA. Todo exercício, série, faixa de repetições, RIR, descanso, cardio, progressão, deload e texto científico é derivado das duas pesquisas versionadas em [`docs/research`](docs/research). A rastreabilidade está em [`docs/RESEARCH_MAPPING.md`](docs/RESEARCH_MAPPING.md) e a extração integral em [`docs/PROGRAM_EXTRACTION.md`](docs/PROGRAM_EXTRACTION.md).
+Os programas científicos não são gerados por IA. Todo exercício, série, faixa de repetições, RIR, descanso, cardio, progressão, deload e texto científico desses programas é derivado das duas pesquisas versionadas em [`docs/research`](docs/research). A IA é opcional e cria apenas rascunhos de ciclos pessoais, sempre revisados antes de entrar no calendário. A rastreabilidade está em [`docs/RESEARCH_MAPPING.md`](docs/RESEARCH_MAPPING.md) e a extração integral em [`docs/PROGRAM_EXTRACTION.md`](docs/PROGRAM_EXTRACTION.md).
 
 ## O que está implementado
 
@@ -15,6 +15,7 @@ Os programas não são gerados por IA. Todo exercício, série, faixa de repeti�
 - PWA com cache do shell, fila IndexedDB para mutations sem resposta, retry explícito e estados “Não sincronizado”/“Sincronizado”;
 - autenticação por hash PBKDF2 com salt, sessão opaca em cookie HttpOnly, rate limit persistente, verificação de origem, CSP e isolamento server-side;
 - optimistic concurrency, chaves de idempotência, constraints, foreign keys, índices e batches atômicos no D1;
+- criação opcional de rascunho mensal/trimestral pela DeepSeek, com JSON validado no servidor, prévia editável, limite diário e confirmação humana;
 - testes unitários, integração no runtime Workers e E2E mobile com os dois perfis.
 
 ## Requisitos
@@ -34,7 +35,7 @@ As versões de todas as dependências estão fixadas no `package.json` e no lock
    npm install
    ```
 
-2. Copie `.dev.vars.example` para `.dev.vars` e substitua todos os exemplos. Esse arquivo é ignorado pelo Git. Use duas senhas longas, únicas e diferentes, e gere `SEED_SECRET` com um gerenciador de senhas ou gerador criptográfico.
+2. Copie `.dev.vars.example` para `.dev.vars` e substitua todos os exemplos. Esse arquivo é ignorado pelo Git. Use duas senhas longas, únicas e diferentes, gere `SEED_SECRET` com um gerenciador de senhas ou gerador criptográfico e informe `DEEPSEEK_API_KEY` se quiser habilitar o planejador por IA.
 
    ```powershell
    Copy-Item .dev.vars.example .dev.vars
@@ -194,6 +195,7 @@ O Playwright usa as credenciais de `.dev.vars` localmente; em CI, forneça as me
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): stack, camadas, banco, auth, concorrência e fluxo de dados.
 - [`docs/PROGRAM_EXTRACTION.md`](docs/PROGRAM_EXTRACTION.md): extração detalhada das duas pesquisas.
 - [`docs/RESEARCH_MAPPING.md`](docs/RESEARCH_MAPPING.md): pesquisa → seed → regra/API/UI.
+- [`docs/AI_WORKOUT_PLANNING.md`](docs/AI_WORKOUT_PLANNING.md): fluxo de IA, dados enviados, limites e configuração.
 - [`docs/research/README.md`](docs/research/README.md): proveniência dos Markdown extraídos e PDFs imutáveis.
 
 As ambiguidades estão registradas nesses documentos. Em particular: a pesquisa usa blocos de aproximadamente 12–13 semanas sem distribuir explicitamente a semana 52; a implementação adota quatro blocos de 13 semanas e marca isso como convenção. Alternativas de exercício que dependem de equipamento/anatomia permanecem como seleção humana; o software não escolhe por conta própria.
