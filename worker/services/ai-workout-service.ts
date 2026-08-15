@@ -1,7 +1,7 @@
 import { HttpError } from "../lib/http-error";
 import { AiWorkoutRepository } from "../repositories/ai-workout-repository";
 import type { AppBindings } from "../types";
-import { AiWorkoutProviderError, requestWorkoutPlan } from "./openai-workout-client";
+import { AiWorkoutProviderError, requestWorkoutPlan } from "./deepseek-workout-client";
 
 interface GenerationInput {
   prompt: string;
@@ -14,7 +14,7 @@ function dailyLimit(bindings: AppBindings): number {
 }
 
 function modelName(bindings: AppBindings): string {
-  return String(bindings.OPENAI_MODEL || "gpt-5.6-terra");
+  return String(bindings.DEEPSEEK_MODEL || "deepseek-v4-flash");
 }
 
 function sinceYesterday(now: Date): string {
@@ -33,7 +33,7 @@ export class AiWorkoutService {
     const limit = dailyLimit(this.bindings);
     const used = await this.repository.countSince(profileId, sinceYesterday(now));
     return {
-      available: Boolean(this.bindings.OPENAI_API_KEY),
+      available: Boolean(this.bindings.DEEPSEEK_API_KEY),
       model: modelName(this.bindings),
       dailyLimit: limit,
       remainingToday: Math.max(0, limit - used),
@@ -41,7 +41,7 @@ export class AiWorkoutService {
   }
 
   async generate(profileId: string, input: GenerationInput) {
-    const apiKey = this.bindings.OPENAI_API_KEY;
+    const apiKey = this.bindings.DEEPSEEK_API_KEY;
     if (!apiKey) throw new HttpError(503, "AI_NOT_CONFIGURED", "A geração por IA ainda não foi configurada neste ambiente.");
 
     const context = await this.repository.getPlanningContext(profileId);
@@ -78,6 +78,15 @@ export class AiWorkoutService {
       await this.repository.failGeneration(generationId, profileId, code, new Date().toISOString());
       if (error instanceof AiWorkoutProviderError && error.code === "refused") {
         throw new HttpError(422, "AI_REQUEST_REFUSED", "A IA não conseguiu criar um rascunho seguro para esse pedido. Reformule as preferências.");
+      }
+      if (error instanceof AiWorkoutProviderError && error.code === "authentication") {
+        throw new HttpError(503, "AI_AUTHENTICATION_ERROR", "A chave da DeepSeek foi recusada. Cadastre uma chave válida nos secrets deste ambiente.");
+      }
+      if (error instanceof AiWorkoutProviderError && error.code === "insufficient_balance") {
+        throw new HttpError(503, "AI_INSUFFICIENT_BALANCE", "O saldo da DeepSeek é insuficiente. Adicione créditos e tente novamente.");
+      }
+      if (error instanceof AiWorkoutProviderError && error.code === "rate_limited") {
+        throw new HttpError(502, "AI_RATE_LIMITED", "A DeepSeek está limitando as solicitações agora. Aguarde um instante e tente novamente.");
       }
       throw new HttpError(502, "AI_PROVIDER_ERROR", "A IA não conseguiu gerar o treino agora. Tente novamente em alguns instantes.");
     }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AiPlanningContext } from "../../worker/repositories/ai-workout-repository";
-import { AiWorkoutProviderError, requestWorkoutPlan } from "../../worker/services/openai-workout-client";
+import { AiWorkoutProviderError, requestWorkoutPlan } from "../../worker/services/deepseek-workout-client";
 
 const planningContext: AiPlanningContext = {
   sex: "female",
@@ -28,16 +28,16 @@ const planningContext: AiPlanningContext = {
 
 function providerResponse(output: unknown) {
   return new Response(JSON.stringify({
-    status: "completed",
-    output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(output) }] }],
-    usage: { input_tokens: 1200, output_tokens: 450 },
+    choices: [{ finish_reason: "stop", index: 0, message: { role: "assistant", content: JSON.stringify(output) } }],
+    usage: { prompt_tokens: 1200, completion_tokens: 450, total_tokens: 1650 },
   }), { status: 200, headers: { "content-type": "application/json" } });
 }
 
 describe("rascunho de treino por IA", () => {
-  it("usa Structured Output sem armazenamento e normaliza exercício canônico", async () => {
-    const captured: { body?: Record<string, unknown> } = {};
-    const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+  it("usa o JSON Output da DeepSeek e normaliza exercício canônico", async () => {
+    const captured: { url?: string; body?: Record<string, unknown> } = {};
+    const fetcher = (async (request: RequestInfo | URL, init?: RequestInit) => {
+      captured.url = String(request);
       captured.body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       return providerResponse({
         name: "Ciclo de força e hipertrofia",
@@ -51,14 +51,20 @@ describe("rascunho de treino por IA", () => {
       });
     }) as typeof fetch;
 
-    const result = await requestWorkoutPlan({ apiKey: "test-api-key", model: "gpt-test", prompt: "Quero treinar pernas três vezes na semana.", durationWeeks: 4, startDate: "2026-08-17", context: planningContext, fetcher });
+    const result = await requestWorkoutPlan({ apiKey: "test-api-key", model: "deepseek-test", prompt: "Quero treinar pernas três vezes na semana.", durationWeeks: 4, startDate: "2026-08-17", context: planningContext, fetcher });
 
     expect(result.plan.days[0]?.exercises[0]?.name).toBe("Hip Thrust");
     expect(result).toMatchObject({ inputTokens: 1200, outputTokens: 450 });
-    expect(captured.body?.store).toBe(false);
-    expect(captured.body?.model).toBe("gpt-test");
-    expect(captured.body?.text).toMatchObject({ format: { type: "json_schema", strict: true } });
-    expect(String(captured.body?.input)).not.toContain("athlete:female:initial");
+    expect(captured.url).toBe("https://api.deepseek.com/chat/completions");
+    expect(captured.body?.model).toBe("deepseek-test");
+    expect(captured.body?.thinking).toEqual({ type: "disabled" });
+    expect(captured.body?.response_format).toEqual({ type: "json_object" });
+    expect(captured.body).not.toHaveProperty("store");
+    const messages = captured.body?.messages as Array<{ role: string; content: string }>;
+    expect(messages[0]).toMatchObject({ role: "system" });
+    expect(messages[0]?.content).toContain("additionalProperties");
+    expect(messages[1]).toMatchObject({ role: "user" });
+    expect(messages[1]?.content).not.toContain("athlete:female:initial");
   });
 
   it("rejeita uma prescrição semanticamente inválida mesmo quando o JSON é válido", async () => {
@@ -73,7 +79,13 @@ describe("rascunho de treino por IA", () => {
       }],
     })) as typeof fetch;
 
-    await expect(requestWorkoutPlan({ apiKey: "test-api-key", model: "gpt-test", prompt: "Quero um treino completo para quatro semanas.", durationWeeks: 4, startDate: "2026-08-17", context: planningContext, fetcher }))
+    await expect(requestWorkoutPlan({ apiKey: "test-api-key", model: "deepseek-test", prompt: "Quero um treino completo para quatro semanas.", durationWeeks: 4, startDate: "2026-08-17", context: planningContext, fetcher }))
       .rejects.toMatchObject({ code: "invalid_plan" } satisfies Partial<AiWorkoutProviderError>);
+  });
+
+  it("identifica saldo insuficiente sem ler ou registrar o corpo da resposta", async () => {
+    const fetcher = (async () => new Response(null, { status: 402 })) as typeof fetch;
+    await expect(requestWorkoutPlan({ apiKey: "test-api-key", model: "deepseek-test", prompt: "Quero um treino completo para quatro semanas.", durationWeeks: 4, startDate: "2026-08-17", context: planningContext, fetcher }))
+      .rejects.toMatchObject({ code: "insufficient_balance" } satisfies Partial<AiWorkoutProviderError>);
   });
 });

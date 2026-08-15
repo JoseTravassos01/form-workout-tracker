@@ -15,7 +15,7 @@ Os programas científicos não são gerados por IA. Todo exercício, série, fai
 - PWA com cache do shell, fila IndexedDB para mutations sem resposta, retry explícito e estados “Não sincronizado”/“Sincronizado”;
 - autenticação por hash PBKDF2 com salt, sessão opaca em cookie HttpOnly, rate limit persistente, verificação de origem, CSP e isolamento server-side;
 - optimistic concurrency, chaves de idempotência, constraints, foreign keys, índices e batches atômicos no D1;
-- criação opcional de rascunho mensal/trimestral pela OpenAI, com Structured Output, prévia editável, limite diário e confirmação humana;
+- criação opcional de rascunho mensal/trimestral pela DeepSeek, com JSON validado no servidor, prévia editável, limite diário e confirmação humana;
 - testes unitários, integração no runtime Workers e E2E mobile com os dois perfis.
 
 ## Requisitos
@@ -35,7 +35,7 @@ As versões de todas as dependências estão fixadas no `package.json` e no lock
    npm install
    ```
 
-2. Copie `.dev.vars.example` para `.dev.vars` e substitua todos os exemplos. Esse arquivo é ignorado pelo Git. Use duas senhas longas, únicas e diferentes, gere `SEED_SECRET` com um gerenciador de senhas ou gerador criptográfico e informe `OPENAI_API_KEY` se quiser habilitar o planejador por IA.
+2. Copie `.dev.vars.example` para `.dev.vars` e substitua todos os exemplos. Esse arquivo é ignorado pelo Git. Use duas senhas longas, únicas e diferentes, gere `SEED_SECRET` com um gerenciador de senhas ou gerador criptográfico e informe `DEEPSEEK_API_KEY` se quiser habilitar o planejador por IA.
 
    ```powershell
    Copy-Item .dev.vars.example .dev.vars

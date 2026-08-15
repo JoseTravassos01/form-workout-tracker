@@ -1,5 +1,5 @@
 export type SecretBindings = {
-  OPENAI_API_KEY?: string;
+  DEEPSEEK_API_KEY?: string;
   SEED_SECRET?: string;
   MALE_USERNAME?: string;
   MALE_PASSWORD?: string;
@@ -12,7 +12,7 @@ export type SecretBindings = {
 };
 
 export type AiBindings = {
-  OPENAI_MODEL?: string;
+  DEEPSEEK_MODEL?: string;
   AI_DAILY_GENERATION_LIMIT?: string;
 };
 

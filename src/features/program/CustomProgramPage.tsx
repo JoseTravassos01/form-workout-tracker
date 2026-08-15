@@ -70,7 +70,7 @@ export function CustomProgramPage() {
       <label>Como você quer treinar?<textarea value={aiPrompt} maxLength={3000} rows={5} onChange={(event) => setAiPrompt(event.target.value)} placeholder="Ex.: Quero hipertrofia 4 vezes por semana, com prioridade em costas e pernas. Tenho 60 minutos por treino e prefiro máquinas..." /></label>
       <div className="ai-workout-privacy"><ShieldCheck /><span>São enviados somente este pedido, o programa atual e um resumo das performances recentes — sem nome, medidas ou anotações pessoais.</span></div>
       <div className="ai-workout-actions">
-        <small>{aiStatusLoading ? "Verificando disponibilidade…" : aiStatusError ? "Não foi possível verificar a IA. Confirme a migration e a configuração." : aiStatus?.available ? `${aiStatus.model} · ${aiStatus.remainingToday} de ${aiStatus.dailyLimit} rascunhos disponíveis` : "Adicione OPENAI_API_KEY aos secrets para habilitar."}</small>
+        <small>{aiStatusLoading ? "Verificando disponibilidade…" : aiStatusError ? "Não foi possível verificar a IA. Confirme a migration e a configuração." : aiStatus?.available ? `DeepSeek · ${aiStatus.model} · ${aiStatus.remainingToday} de ${aiStatus.dailyLimit} rascunhos disponíveis` : "Adicione DEEPSEEK_API_KEY aos secrets para habilitar."}</small>
         <Button type="button" loading={generating} disabled={aiStatusLoading || !aiStatus?.available || aiStatus.remainingToday < 1 || aiPrompt.trim().length < 20} onClick={() => void generateWithAi()}><Sparkles /> GERAR RASCUNHO</Button>
       </div>
     </Card>

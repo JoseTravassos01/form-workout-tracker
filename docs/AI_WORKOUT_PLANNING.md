@@ -8,7 +8,7 @@ O fluxo é:
 
 1. o usuário descreve objetivo, disponibilidade, preferências e limitações;
 2. o Worker reúne o programa atual, as prescrições do bloco atual, exercícios canônicos já conhecidos e um resumo das performances recentes;
-3. a Responses API devolve um Structured Output validado por JSON Schema e novamente por Zod;
+3. a API Chat Completions da DeepSeek devolve um objeto JSON, guiado por JSON Schema no prompt e validado pelo servidor com Zod;
 4. a interface preenche o construtor existente;
 5. o usuário revisa e pode editar tudo;
 6. somente o botão **Salvar no calendário** usa a rota normal de criação de ciclo pessoal.
@@ -17,7 +17,7 @@ O ciclo continua sendo aditivo: um dia pessoal prevalece no calendário durante 
 
 ## Dados enviados
 
-São enviados à OpenAI:
+São enviados à DeepSeek:
 
 - o texto digitado pelo usuário;
 - sexo cadastrado no perfil;
@@ -28,7 +28,7 @@ São enviados à OpenAI:
 
 Não são enviados nome do usuário, username, medidas corporais, notas de séries, notas pessoais, cookies, IDs internos do perfil ou credenciais.
 
-A chamada usa `store: false`. O D1 mantém apenas uma auditoria operacional com modelo, duração, tamanho do pedido, status e tokens consumidos. O pedido e o rascunho não são persistidos nessa tabela.
+A aplicação não persiste o pedido nem o rascunho da DeepSeek. O D1 mantém apenas uma auditoria operacional com modelo, duração, tamanho do pedido, status e tokens consumidos. O tratamento dos dados pela provedora segue os termos e a política da DeepSeek.
 
 ## Segurança e custo
 
@@ -41,18 +41,18 @@ A chamada usa `store: false`. O D1 mantém apenas uma auditoria operacional com 
 
 ## Configuração
 
-`OPENAI_API_KEY` é secret e nunca deve entrar no `wrangler.jsonc` ou no Git. Para desenvolvimento local, coloque a chave somente no `.dev.vars`.
+`DEEPSEEK_API_KEY` é secret e nunca deve entrar no `wrangler.jsonc` ou no Git. Para desenvolvimento local, coloque a chave somente no `.dev.vars`.
 
 Os valores não secretos são:
 
-- `OPENAI_MODEL`: padrão `gpt-5.6-terra`;
+- `DEEPSEEK_MODEL`: padrão `deepseek-v4-flash`;
 - `AI_DAILY_GENERATION_LIMIT`: padrão `10`.
 
 Em Cloudflare, configure o secret separadamente em desenvolvimento e produção:
 
 ```powershell
-npx wrangler secret put OPENAI_API_KEY --env dev
-npx wrangler secret put OPENAI_API_KEY --env=""
+npx wrangler secret put DEEPSEEK_API_KEY --env dev
+npx wrangler secret put DEEPSEEK_API_KEY --env=""
 ```
 
 Depois aplique a migration `0009_ai_workout_generation_audit.sql` antes do deploy.

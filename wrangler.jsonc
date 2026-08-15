@@ -19,7 +19,7 @@
   "vars": {
     "APP_ENV": "production",
     "SESSION_TTL_DAYS": "14",
-    "OPENAI_MODEL": "gpt-5.6-terra",
+    "DEEPSEEK_MODEL": "deepseek-v4-flash",
     "AI_DAILY_GENERATION_LIMIT": "10"
   },
   "observability": {
@@ -46,7 +46,7 @@
       "vars": {
         "APP_ENV": "development",
         "SESSION_TTL_DAYS": "14",
-        "OPENAI_MODEL": "gpt-5.6-terra",
+        "DEEPSEEK_MODEL": "deepseek-v4-flash",
         "AI_DAILY_GENERATION_LIMIT": "10"
       }
     }

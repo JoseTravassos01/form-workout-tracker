@@ -22,14 +22,14 @@ Migrations devem ser testadas primeiro em `dev`. Antes de uma migration destruti
 
 ## Secret da geração por IA
 
-A criação assistida de ciclos pessoais usa a API da OpenAI. `OPENAI_API_KEY` deve ser configurada separadamente em cada Worker porque secrets não são herdados entre ambientes:
+A criação assistida de ciclos pessoais usa a API da DeepSeek. `DEEPSEEK_API_KEY` deve ser configurada separadamente em cada Worker porque secrets não são herdados entre ambientes:
 
 ```powershell
-npx wrangler secret put OPENAI_API_KEY --env dev
-npx wrangler secret put OPENAI_API_KEY --env=""
+npx wrangler secret put DEEPSEEK_API_KEY --env dev
+npx wrangler secret put DEEPSEEK_API_KEY --env=""
 ```
 
-A chave é independente da assinatura do ChatGPT e nunca deve ser colocada no Git ou no `wrangler.jsonc`. O modelo e o limite diário são configurações não secretas em `wrangler.jsonc`.
+A chave pertence à conta da DeepSeek e nunca deve ser colocada no Git ou no `wrangler.jsonc`. O modelo e o limite diário são configurações não secretas em `wrangler.jsonc`.
 
 ## Cloudflare Builds
 
