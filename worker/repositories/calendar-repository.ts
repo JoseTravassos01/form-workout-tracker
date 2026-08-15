@@ -12,10 +12,11 @@ export interface ScheduleTemplateRow {
   duration_max: number | null;
   rpe_min: number | null;
   rpe_max: number | null;
+  source: "scientific" | "custom";
 }
 
 export interface CalendarWorkoutStatusRow { id: string; trainingDayId: string; scheduledDate: string; status: string; version: number }
-export interface CalendarCardioStatusRow { id: string; cardioPrescriptionId: string; scheduledDate: string; status: string; version: number }
+export interface CalendarCardioStatusRow { id: string; cardioPrescriptionId: string | null; personalCardioPlanId: string | null; scheduledDate: string; status: string; version: number }
 export interface CalendarOverrideRow { id: string; originalDate: string; newDate: string | null; trainingDayId: string | null; action: "rescheduled" | "missed" | "rest"; reason: string; version: number }
 
 export class CalendarRepository {
@@ -24,19 +25,26 @@ export class CalendarRepository {
   async getTemplates(profileId: string): Promise<ScheduleTemplateRow[]> {
     const result = await this.database.prepare(`SELECT b.program_id,apa.effective_from,apa.effective_to,b.block_number,
       CASE WHEN d.type='recovery' THEN 'rest' ELSE 'strength' END kind,d.id,d.weekday,d.name,d.description subtitle,d.duration_min,d.duration_max,NULL rpe_min,NULL rpe_max
+      ,'scientific' source
       FROM training_days d JOIN training_blocks b ON b.id=d.block_id
       JOIN athlete_program_assignments apa ON apa.program_id=b.program_id WHERE apa.athlete_profile_id=?
       UNION ALL SELECT b.program_id,apa.effective_from,apa.effective_to,b.block_number,'cardio' kind,c.id,c.weekday,c.modality name,c.intensity subtitle,c.duration_min,c.duration_max,c.rpe_min,c.rpe_max
+      ,'scientific' source
       FROM cardio_prescriptions c JOIN training_blocks b ON b.id=c.block_id
       JOIN athlete_program_assignments apa ON apa.program_id=b.program_id WHERE apa.athlete_profile_id=?
-      ORDER BY effective_from,block_number,weekday,kind DESC`).bind(profileId, profileId).all<ScheduleTemplateRow>();
+      UNION ALL SELECT b.program_id,cp.start_date effective_from,cp.end_date effective_to,b.block_number,
+      'strength' kind,d.id,d.weekday,d.name,d.description subtitle,d.duration_min,d.duration_max,NULL rpe_min,NULL rpe_max,'custom' source
+      FROM training_days d JOIN training_blocks b ON b.id=d.block_id
+      JOIN custom_program_periods cp ON cp.program_id=b.program_id
+      WHERE cp.athlete_profile_id=? AND cp.active=1
+      ORDER BY effective_from,block_number,weekday,kind DESC`).bind(profileId, profileId, profileId).all<ScheduleTemplateRow>();
     return result.results;
   }
 
   async getStatuses(profileId: string, from: string, to: string): Promise<{ workouts: CalendarWorkoutStatusRow[]; cardio: CalendarCardioStatusRow[]; overrides: CalendarOverrideRow[] }> {
     const results = await this.database.batch([
       this.database.prepare("SELECT id,training_day_id trainingDayId,scheduled_date scheduledDate,status,version FROM workout_sessions WHERE athlete_profile_id=? AND scheduled_date BETWEEN ? AND ?").bind(profileId, from, to),
-      this.database.prepare("SELECT id,cardio_prescription_id cardioPrescriptionId,scheduled_date scheduledDate,status,version FROM cardio_sessions WHERE athlete_profile_id=? AND scheduled_date BETWEEN ? AND ?").bind(profileId, from, to),
+      this.database.prepare("SELECT id,cardio_prescription_id cardioPrescriptionId,personal_cardio_plan_id personalCardioPlanId,scheduled_date scheduledDate,status,version FROM cardio_sessions WHERE athlete_profile_id=? AND scheduled_date BETWEEN ? AND ?").bind(profileId, from, to),
       this.database.prepare("SELECT id,original_date originalDate,new_date newDate,training_day_id trainingDayId,action,reason,version FROM calendar_overrides WHERE athlete_profile_id=? AND (original_date BETWEEN ? AND ? OR new_date BETWEEN ? AND ?)").bind(profileId, from, to, from, to),
     ]);
     const workouts = results[0]!;
@@ -49,12 +57,22 @@ export class CalendarRepository {
     };
   }
 
+  async getPersonalCardioPlans(profileId: string, from: string, to: string) {
+    const result = await this.database.prepare(`SELECT id,start_date startDate,end_date endDate,weekdays,modality,
+      duration_min durationMin,duration_max durationMax,rpe_min rpeMin,rpe_max rpeMax,notes,recurrence_scope recurrenceScope,version
+      FROM personal_cardio_plans WHERE athlete_profile_id=? AND active=1 AND start_date<=? AND end_date>=? ORDER BY start_date,created_at`)
+      .bind(profileId, to, from).all();
+    return result.results as Array<{ id: string; startDate: string; endDate: string; weekdays: string; modality: string; durationMin: number; durationMax: number; rpeMin: number; rpeMax: number; notes: string; recurrenceScope: string; version: number }>;
+  }
+
   async saveOverride(profileId: string, input: { originalDate: string; newDate: string | null; trainingDayId: string | null; action: string; reason: string; version: number | null }): Promise<{ conflict: boolean; id: string; version: number }> {
     if (input.trainingDayId) {
       const owns = await this.database.prepare(`SELECT d.id FROM training_days d JOIN training_blocks b ON b.id=d.block_id
-        JOIN athlete_program_assignments apa ON apa.program_id=b.program_id
-        WHERE apa.athlete_profile_id=? AND d.id=? AND ?>=apa.effective_from AND (apa.effective_to IS NULL OR ?<=apa.effective_to)`)
-        .bind(profileId, input.trainingDayId, input.originalDate, input.originalDate).first();
+      LEFT JOIN athlete_program_assignments apa ON apa.program_id=b.program_id AND apa.athlete_profile_id=?
+      LEFT JOIN custom_program_periods cp ON cp.program_id=b.program_id AND cp.athlete_profile_id=? AND cp.active=1
+        WHERE d.id=? AND ((?>=apa.effective_from AND (apa.effective_to IS NULL OR ?<=apa.effective_to))
+          OR (?>=cp.start_date AND ?<=cp.end_date))`)
+        .bind(profileId, profileId, input.trainingDayId, input.originalDate, input.originalDate, input.originalDate, input.originalDate).first();
       if (!owns) return { conflict: true, id: "", version: 0 };
     }
     const existing = await this.database.prepare(`SELECT id,version FROM calendar_overrides WHERE athlete_profile_id=? AND original_date=? AND training_day_id IS ?`).bind(profileId, input.originalDate, input.trainingDayId).first<{ id: string; version: number }>();

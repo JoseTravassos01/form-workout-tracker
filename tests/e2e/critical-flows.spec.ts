@@ -131,3 +131,24 @@ test("fluxos críticos dos dois perfis permanecem isolados", async ({ page }) =>
   await page.goto("/app/progress");
   await expect(page.getByRole("heading", { name: "Progresso" })).toBeVisible();
 });
+
+test("cardio pessoal, hidratação e construtor abrem corretamente no celular", async ({ page }) => {
+  await login(page, required("MALE_USERNAME"), required("MALE_PASSWORD"));
+
+  await page.goto("/app/hydration");
+  await expect(page.getByRole("heading", { name: "Hidratação" })).toBeVisible();
+  await page.getByRole("button", { name: /250 ml/ }).click();
+  await expect(page.getByText("250 ml adicionados.")).toBeVisible();
+
+  await page.goto("/app/calendar");
+  await page.getByRole("button", { name: "ADICIONAR CARDIO" }).click();
+  await expect(page.getByRole("dialog", { name: "Adicionar cardio" })).toBeVisible();
+  await expect(page.getByLabel("Salvar para")).toBeVisible();
+  await page.getByRole("button", { name: "Fechar", exact: true }).click();
+
+  await page.goto("/app/program/custom/create");
+  await expect(page.getByRole("heading", { name: "Criar meu treino" })).toBeVisible();
+  await expect(page.getByLabel("Duração")).toContainText("Mensal");
+  const bodyWidth = await page.locator("body").evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+  expect(bodyWidth.scroll).toBeLessThanOrEqual(bodyWidth.client + 1);
+});

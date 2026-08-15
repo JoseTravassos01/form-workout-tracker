@@ -23,6 +23,8 @@ interface CalendarItem {
   week?: number;
   override?: { version?: number; reason?: string; originalDate?: string; newDate?: string | null };
   session?: { id: string; version: number; status: string } | null;
+  source?: "scientific" | "custom" | "personal";
+  planVersion?: number;
 }
 interface CalendarDto { from: string; to: string; items: CalendarItem[] }
 
@@ -49,6 +51,13 @@ export function CalendarPage() {
   const [activityRpe, setActivityRpe] = useState(3);
   const [activityNotes, setActivityNotes] = useState("");
   const [openingWorkout, setOpeningWorkout] = useState(false);
+  const [addingCardioPlan, setAddingCardioPlan] = useState(false);
+  const [cardioModality, setCardioModality] = useState("Caminhada");
+  const [cardioScope, setCardioScope] = useState<"once" | "week" | "month">("once");
+  const [cardioWeekdays, setCardioWeekdays] = useState<number[]>([new Date(`${activeDate}T12:00:00`).getDay() || 7]);
+  const [planDuration, setPlanDuration] = useState(30);
+  const [planRpe, setPlanRpe] = useState(3);
+  const [planNotes, setPlanNotes] = useState("");
   const range = useMemo(() => mode === "month"
     ? { from: startOfWeek(startOfMonth(cursor), { weekStartsOn: 1 }), to: endOfWeek(endOfMonth(cursor), { weekStartsOn: 1 }) }
     : { from: startOfWeek(cursor, { weekStartsOn: 1 }), to: endOfWeek(cursor, { weekStartsOn: 1 }) }, [cursor, mode]);
@@ -140,11 +149,50 @@ export function CalendarPage() {
     }
   };
 
+  const openCardioPlan = () => {
+    const weekday = new Date(`${activeDate}T12:00:00`).getDay() || 7;
+    setCardioWeekdays([weekday]);
+    setAddingCardioPlan(true);
+  };
+
+  const addCardioPlan = async () => {
+    const start = new Date(`${activeDate}T12:00:00`);
+    const end = cardioScope === "once" ? start : cardioScope === "week" ? endOfWeek(start, { weekStartsOn: 1 }) : endOfMonth(start);
+    try {
+      await apiMutation("/api/cardio/plans", "POST", {
+        startDate: activeDate,
+        endDate: format(end, "yyyy-MM-dd"),
+        weekdays: cardioScope === "once" ? [start.getDay() || 7] : cardioWeekdays,
+        modality: cardioModality.trim(),
+        durationMin: planDuration,
+        durationMax: planDuration,
+        rpeMin: planRpe,
+        rpeMax: planRpe,
+        notes: planNotes,
+        recurrenceScope: cardioScope,
+        idempotencyKey: crypto.randomUUID(),
+      });
+      show("Cardio adicionado ao calendário.", "success");
+      setAddingCardioPlan(false);
+      await refresh();
+    } catch (error) { show(error instanceof Error ? error.message : "Não foi possível salvar o cardio.", "error"); }
+  };
+
+  const removePersonalCardio = async () => {
+    if (!selected?.templateId || !selected.planVersion) return;
+    try {
+      await apiMutation(`/api/cardio/plans/${encodeURIComponent(selected.templateId)}?version=${selected.planVersion}`, "DELETE");
+      show("Cardio retirado das próximas datas. Sessões concluídas foram preservadas.", "success");
+      setSelected(null);
+      await refresh();
+    } catch (error) { show(error instanceof Error ? error.message : "Não foi possível remover o cardio.", "error"); }
+  };
+
   const selectedWorkoutWasMoved = selected?.status === "rescheduled" && selected.override?.newDate != null && selected.override.newDate !== selected.date;
   const canOpenSelectedWorkout = selected?.kind === "strength" && !selectedWorkoutWasMoved && !["missed", "rest", "skipped"].includes(selected.status);
 
   return <div className="page-stack calendar-page">
-    <PageHeader eyebrow="PLANEJAMENTO" title="Calendário" />
+    <PageHeader eyebrow="PLANEJAMENTO" title="Calendário" action={<Button variant="secondary" onClick={openCardioPlan}><Plus /> ADICIONAR CARDIO</Button>} />
     <div className="calendar-toolbar">
       <div className="view-toggle"><button className={mode === "month" ? "active" : ""} onClick={() => { setMode("month"); setActiveDate(format(cursor, "yyyy-MM-dd")); }}>Mês</button><button className={mode === "week" ? "active" : ""} onClick={() => { setMode("week"); setActiveDate(format(cursor, "yyyy-MM-dd")); }}>Semana</button></div>
       <div className="month-switch"><button aria-label="Anterior" onClick={() => moveCursor(-1)}><ChevronLeft /></button><strong>{format(cursor, mode === "month" ? "MMMM yyyy" : "'Semana de' d MMM", { locale: ptBR })}</strong><button aria-label="Próximo" onClick={() => moveCursor(1)}><ChevronRight /></button></div>
@@ -185,13 +233,25 @@ export function CalendarPage() {
           <div className="cardio-inputs"><label>Duração real (min)<input type="number" min="1" max="600" value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></label><label>RPE real<input type="number" min="0" max="10" value={rpe} onChange={(event) => setRpe(Number(event.target.value))} /></label></div>
           <label className="calendar-notes">Observação<textarea value={cardioNotes} onChange={(event) => setCardioNotes(event.target.value)} maxLength={2000} /></label>
           <Button onClick={() => void completeCardio()}>CONCLUIR CARDIO</Button>
-        </>}</div>}
+        </>}{selected.source === "personal" && <Button variant="danger" onClick={() => void removePersonalCardio()}>REMOVER CARDIO DESTE PERÍODO</Button>}</div>}
         {selected.kind !== "extra" && <div className="extra-activity-box">{!addingActivity ? <button onClick={() => setAddingActivity(true)}><Plus /> Registrar atividade extra</button> : <>
           <h3><Activity /> Atividade extra</h3><label>Atividade<input value={activityName} onChange={(event) => setActivityName(event.target.value)} placeholder="Ex.: caminhada" maxLength={120} /></label>
           <div className="cardio-inputs"><label>Duração (min)<input type="number" min="1" max="600" value={activityDuration} onChange={(event) => setActivityDuration(Number(event.target.value))} /></label><label>RPE<input type="number" min="0" max="10" value={activityRpe} onChange={(event) => setActivityRpe(Number(event.target.value))} /></label></div>
           <label>Observação<textarea value={activityNotes} onChange={(event) => setActivityNotes(event.target.value)} maxLength={2000} /></label>
           <div className="modal-secondary-actions"><button onClick={() => setAddingActivity(false)}>Cancelar</button><Button disabled={activityName.trim().length < 2} onClick={() => void addActivity()}>SALVAR ATIVIDADE</Button></div>
         </>}</div>}
+      </Card>
+    </div>}
+    {addingCardioPlan && <div className="modal-layer" role="dialog" aria-modal="true" aria-label="Adicionar cardio">
+      <button className="modal-backdrop" onClick={() => setAddingCardioPlan(false)} />
+      <Card className="day-modal cardio-plan-modal"><button className="modal-close" aria-label="Fechar" onClick={() => setAddingCardioPlan(false)}><X /></button>
+        <span className="eyebrow">CARDIO PESSOAL</span><h2>Adicionar em {new Date(`${activeDate}T12:00:00`).toLocaleDateString("pt-BR", { day: "numeric", month: "long" })}</h2>
+        <label>Modalidade<input value={cardioModality} maxLength={120} onChange={(event) => setCardioModality(event.target.value)} /></label>
+        <div className="cardio-inputs"><label>Duração (min)<input type="number" min="1" max="600" value={planDuration} onChange={(event) => setPlanDuration(Number(event.target.value))} /></label><label>RPE<input type="number" min="0" max="10" value={planRpe} onChange={(event) => setPlanRpe(Number(event.target.value))} /></label></div>
+        <label>Salvar para<select value={cardioScope} onChange={(event) => setCardioScope(event.target.value as "once" | "week" | "month")}><option value="once">Somente este dia</option><option value="week">Até o fim desta semana</option><option value="month">Até o fim deste mês</option></select></label>
+        {cardioScope !== "once" && <fieldset className="weekday-picker"><legend>Repetir em quais dias?</legend>{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((label, index) => { const weekday = index + 1; return <button type="button" className={cardioWeekdays.includes(weekday) ? "active" : ""} key={label} onClick={() => setCardioWeekdays((current) => current.includes(weekday) ? current.filter((item) => item !== weekday) : [...current, weekday])}>{label}</button>; })}</fieldset>}
+        <label>Observação<textarea value={planNotes} maxLength={2000} onChange={(event) => setPlanNotes(event.target.value)} /></label>
+        <Button disabled={cardioModality.trim().length < 2 || planDuration < 1 || (cardioScope !== "once" && cardioWeekdays.length === 0)} onClick={() => void addCardioPlan()}>SALVAR CARDIO</Button>
       </Card>
     </div>}
   </div>;

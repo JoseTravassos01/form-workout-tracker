@@ -445,6 +445,7 @@ export const cardioSessions = sqliteTable(
     id: text("id").primaryKey(),
     athleteProfileId: text("athlete_profile_id").notNull().references(() => athleteProfiles.id, { onDelete: "cascade" }),
     cardioPrescriptionId: text("cardio_prescription_id").references(() => cardioPrescriptions.id),
+    personalCardioPlanId: text("personal_cardio_plan_id"),
     scheduledDate: text("scheduled_date").notNull(),
     startedAt: text("started_at"),
     finishedAt: text("finished_at"),
@@ -460,6 +461,75 @@ export const cardioSessions = sqliteTable(
     index("cardio_sessions_profile_date_idx").on(table.athleteProfileId, table.scheduledDate),
     check("cardio_sessions_status", sql`${table.status} IN ('scheduled','in_progress','completed','missed','skipped')`),
     check("cardio_sessions_rpe", sql`${table.actualRpe} IS NULL OR ${table.actualRpe} BETWEEN 0 AND 10`),
+  ],
+);
+
+export const personalCardioPlans = sqliteTable(
+  "personal_cardio_plans",
+  {
+    id: text("id").primaryKey(),
+    athleteProfileId: text("athlete_profile_id").notNull().references(() => athleteProfiles.id, { onDelete: "cascade" }),
+    startDate: text("start_date").notNull(),
+    endDate: text("end_date").notNull(),
+    weekdays: text("weekdays").notNull(),
+    modality: text("modality").notNull(),
+    durationMin: integer("duration_min").notNull(),
+    durationMax: integer("duration_max").notNull(),
+    rpeMin: integer("rpe_min").notNull(),
+    rpeMax: integer("rpe_max").notNull(),
+    notes: text("notes").notNull().default(""),
+    recurrenceScope: text("recurrence_scope").notNull(),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    version: integer("version").notNull().default(1),
+    ...timestamps,
+  },
+  (table) => [index("personal_cardio_plans_profile_period_idx").on(table.athleteProfileId, table.startDate, table.endDate, table.active)],
+);
+
+export const customProgramPeriods = sqliteTable(
+  "custom_program_periods",
+  {
+    id: text("id").primaryKey(),
+    athleteProfileId: text("athlete_profile_id").notNull().references(() => athleteProfiles.id, { onDelete: "cascade" }),
+    programId: text("program_id").notNull().references(() => trainingPrograms.id),
+    startDate: text("start_date").notNull(),
+    endDate: text("end_date").notNull(),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    version: integer("version").notNull().default(1),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("custom_program_periods_program_uq").on(table.athleteProfileId, table.programId),
+    index("custom_program_periods_profile_period_idx").on(table.athleteProfileId, table.startDate, table.endDate, table.active),
+  ],
+);
+
+export const hydrationSettings = sqliteTable(
+  "hydration_settings",
+  {
+    athleteProfileId: text("athlete_profile_id").primaryKey().references(() => athleteProfiles.id, { onDelete: "cascade" }),
+    dailyGoalMl: integer("daily_goal_ml").notNull().default(2000),
+    reminderEnabled: integer("reminder_enabled", { mode: "boolean" }).notNull().default(false),
+    reminderTime: text("reminder_time").notNull().default("15:00"),
+    version: integer("version").notNull().default(1),
+    ...timestamps,
+  },
+);
+
+export const hydrationLogs = sqliteTable(
+  "hydration_logs",
+  {
+    id: text("id").primaryKey(),
+    athleteProfileId: text("athlete_profile_id").notNull().references(() => athleteProfiles.id, { onDelete: "cascade" }),
+    localDate: text("local_date").notNull(),
+    loggedAt: text("logged_at").notNull(),
+    amountMl: integer("amount_ml").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex("hydration_logs_idempotency_uq").on(table.idempotencyKey),
+    index("hydration_logs_profile_date_idx").on(table.athleteProfileId, table.localDate, table.loggedAt),
   ],
 );
 

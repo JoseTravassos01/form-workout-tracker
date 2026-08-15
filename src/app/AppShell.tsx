@@ -1,8 +1,9 @@
-import { Activity, CalendarDays, Dumbbell, FlaskConical, Home, LogOut, Menu, TrendingUp, UserRound, X } from "lucide-react";
+import { Activity, CalendarDays, Droplets, Dumbbell, FlaskConical, Home, LogOut, Menu, TrendingUp, UserRound, X } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { SyncStatus } from "../components/SyncStatus";
 import { useAuth } from "./AuthProvider";
+import { HydrationReminder } from "../features/hydration/HydrationReminder";
 
 const nav = [
   { to: "/app", label: "Hoje", icon: Home, end: true },
@@ -17,11 +18,13 @@ export function AppShell() {
   const [menu, setMenu] = useState(false);
   return (
     <div className="app-shell" style={{ "--accent": me?.athlete.accentColor } as React.CSSProperties}>
+      <HydrationReminder />
       <aside className={`desktop-sidebar ${menu ? "mobile-open" : ""}`}>
         <div className="brand"><span className="brand-mark"><Activity /></span><span>FORM<small>TRAINING LOG</small></span></div>
         <button className="close-menu" aria-label="Fechar menu" onClick={() => setMenu(false)}><X /></button>
         <nav>{nav.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={() => setMenu(false)}><Icon size={20} /><span>{label}</span></NavLink>)}</nav>
         <div className="sidebar-secondary">
+          <NavLink to="/app/hydration"><Droplets size={20} /> Hidratação</NavLink>
           <NavLink to="/app/check-in"><Activity size={20} /> Check-in</NavLink>
           <NavLink to="/app/science"><FlaskConical size={20} /> Ciência</NavLink>
           <button onClick={() => void logout()}><LogOut size={20} /> Sair</button>

@@ -116,10 +116,12 @@ export class WorkoutRepository {
 
   async ensureSessionForDay(profileId: string, trainingDayId: string, scheduledDate: string, originalDate: string): Promise<string | null> {
     const owns = await this.database.prepare(`SELECT d.id FROM training_days d JOIN training_blocks b ON b.id=d.block_id
-      JOIN athlete_program_assignments apa ON apa.program_id=b.program_id
-      WHERE apa.athlete_profile_id=? AND d.id=? AND d.type='strength'
-      AND ?>=apa.effective_from AND (apa.effective_to IS NULL OR ?<=apa.effective_to)`)
-      .bind(profileId, trainingDayId, originalDate, originalDate).first<{ id: string }>();
+      LEFT JOIN athlete_program_assignments apa ON apa.program_id=b.program_id AND apa.athlete_profile_id=?
+      LEFT JOIN custom_program_periods cp ON cp.program_id=b.program_id AND cp.athlete_profile_id=? AND cp.active=1
+      WHERE d.id=? AND d.type='strength' AND (
+        (?>=apa.effective_from AND (apa.effective_to IS NULL OR ?<=apa.effective_to))
+        OR (?>=cp.start_date AND ?<=cp.end_date))`)
+      .bind(profileId, profileId, trainingDayId, originalDate, originalDate, originalDate, originalDate).first<{ id: string }>();
     if (!owns) return null;
     const id = `workout:${profileId}:${trainingDayId}:${scheduledDate}`;
     await this.database.prepare(`INSERT INTO workout_sessions (id,athlete_profile_id,training_day_id,scheduled_date,original_scheduled_date,status)
@@ -305,11 +307,12 @@ export class WorkoutRepository {
 
   async getWorkout(profileId: string, sessionId: string): Promise<WorkoutDto | null> {
     const session = await this.database.prepare(`SELECT ws.id session_id,ws.scheduled_date,ws.status,ws.started_at,ws.finished_at,ws.notes,ws.version,
-      b.program_id,p.version program_version,COALESCE(apa.effective_from,a.program_start_date) program_start_date,
+      b.program_id,p.version program_version,COALESCE(apa.effective_from,cp.start_date,a.program_start_date) program_start_date,
       b.block_number,d.id,d.name,d.description,d.duration_min,d.duration_max FROM workout_sessions ws
       JOIN athlete_profiles a ON a.id=ws.athlete_profile_id JOIN training_days d ON d.id=ws.training_day_id
       JOIN training_blocks b ON b.id=d.block_id JOIN training_programs p ON p.id=b.program_id
       LEFT JOIN athlete_program_assignments apa ON apa.athlete_profile_id=ws.athlete_profile_id AND apa.program_id=b.program_id
+      LEFT JOIN custom_program_periods cp ON cp.athlete_profile_id=ws.athlete_profile_id AND cp.program_id=b.program_id
       WHERE ws.id=? AND ws.athlete_profile_id=? LIMIT 1`).bind(sessionId, profileId).first<SessionRow>();
     if (!session) return null;
 
