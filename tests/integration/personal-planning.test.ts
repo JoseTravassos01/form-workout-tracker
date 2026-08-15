@@ -1,5 +1,6 @@
 import { env, exports } from "cloudflare:workers";
 import { beforeAll, describe, expect, it } from "vitest";
+import { TrainingService } from "../../worker/services/training-service";
 
 const origin = "http://gym.test";
 
@@ -98,6 +99,11 @@ describe("planejamento pessoal e hidratação", () => {
     const calendar = await request(`/api/calendar?from=${monday}&to=${monday}`, { headers: { cookie } }).then((response) => response.json() as Promise<{ items: Array<{ source?: string; templateId?: string }> }>);
     const custom = calendar.items.find((item) => item.source === "custom");
     expect(custom?.templateId).toContain(program.id);
+
+    const today = await new TrainingService(env.DB).today("athlete:female:initial", new Date(`${monday}T15:00:00Z`));
+    expect(today?.workout?.name).toBe("Meu Lower");
+    expect(today?.workout?.programId).toBe(program.id);
+
     const prepared = await request("/api/workouts/prepare", { method: "POST", headers: { cookie, origin, "content-type": "application/json" }, body: JSON.stringify({ trainingDayId: custom!.templateId, scheduledDate: monday, originalDate: monday }) });
     expect(prepared.status).toBe(201);
     const sessionId = (await prepared.json() as { id: string }).id;

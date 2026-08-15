@@ -99,14 +99,13 @@ export class TrainingService {
     if (!state) return null;
     const weekday = getISODay(new Date(`${state.today}T12:00:00Z`));
     const workoutRepository = new WorkoutRepository(this.database);
-    const overrideResult = await this.database.prepare(`SELECT original_date originalDate,new_date newDate,training_day_id trainingDayId,action
-      FROM calendar_overrides WHERE athlete_profile_id=? AND (original_date=? OR new_date=?) ORDER BY created_at DESC`)
-      .bind(profileId, state.today, state.today).all<{ originalDate: string; newDate: string | null; trainingDayId: string | null; action: string }>();
-    const arrival = overrideResult.results.find((item) => item.action === "rescheduled" && item.newDate === state.today && item.trainingDayId);
-    const departure = overrideResult.results.find((item) => item.originalDate === state.today);
-    const sessionId = arrival?.trainingDayId
-      ? await workoutRepository.ensureSessionForDay(profileId, arrival.trainingDayId, state.today, arrival.originalDate)
-      : departure ? null : await workoutRepository.ensureSession(profileId, state.currentBlock, weekday, state.today);
+    const calendar = await new CalendarService(this.database).list(profileId, state.today, state.today);
+    const strengthItems = calendar?.items.filter((item) => item.kind === "strength" && item.date === state.today && item.templateId) ?? [];
+    const arrival = strengthItems.find((item) => item.override?.action === "rescheduled" && item.override.newDate === state.today);
+    const scheduled = arrival ?? strengthItems.find((item) => !item.override && !["missed", "rest", "skipped"].includes(item.status));
+    const sessionId = scheduled?.templateId
+      ? await workoutRepository.ensureCalendarSession(profileId, scheduled.templateId, state.today, scheduled.override?.originalDate ?? state.today)
+      : null;
     const baseWorkout = sessionId ? await workoutRepository.getWorkout(profileId, sessionId) : null;
     const workout = baseWorkout ? await this.prepareWorkout(profileId, baseWorkout, state.currentWeek) : null;
     const cardio = await this.database.prepare(`SELECT c.id,c.modality,c.duration_min durationMin,c.duration_max durationMax,c.intensity,c.rpe_min rpeMin,c.rpe_max rpeMax,c.instructions,c.recovery_notes recoveryNotes,c.optional_interval_protocol optionalIntervalProtocol
