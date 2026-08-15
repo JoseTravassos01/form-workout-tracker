@@ -3,9 +3,10 @@ import { Hono } from "hono";
 import { HttpError } from "../lib/http-error";
 import { ProgramRepository } from "../repositories/program-repository";
 import { CustomProgramRepository } from "../repositories/custom-program-repository";
+import { AiWorkoutService } from "../services/ai-workout-service";
 import { TrainingService } from "../services/training-service";
 import type { AppEnvironment } from "../types";
-import { customProgramSchema, programStateSchema } from "../validation/api";
+import { aiWorkoutGenerationSchema, customProgramSchema, programStateSchema } from "../validation/api";
 
 export const programRoutes = new Hono<AppEnvironment>()
   .get("/", async (context) => {
@@ -20,6 +21,11 @@ export const programRoutes = new Hono<AppEnvironment>()
   .post("/custom", zValidator("json", customProgramSchema), async (context) => {
     const result = await new CustomProgramRepository(context.env.DB).create(context.get("athleteProfileId"), context.req.valid("json"));
     return context.json(result, result.created ? 201 : 200);
+  })
+  .get("/ai/status", async (context) => context.json(await new AiWorkoutService(context.env.DB, context.env).status(context.get("athleteProfileId"))))
+  .post("/ai/generate", zValidator("json", aiWorkoutGenerationSchema), async (context) => {
+    const result = await new AiWorkoutService(context.env.DB, context.env).generate(context.get("athleteProfileId"), context.req.valid("json"));
+    return context.json(result, 201);
   })
   .delete("/custom/:periodId", async (context) => {
     const version = Number(context.req.query("version"));

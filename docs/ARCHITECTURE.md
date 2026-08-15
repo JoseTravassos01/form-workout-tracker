@@ -74,6 +74,8 @@ A UI só declara “Sincronizado” depois de 2xx. Mutations sem resposta ficam 
 
 Os componentes não contêm nomes de exercícios. Seeds em `worker/data/programs` mantêm as versões históricas e as fichas atuais derivadas dos dois PDFs em `new_correct_train/`; validadores asseguram as invariantes e decisões de transcrição descritas em `docs/RESEARCH_MAPPING.md`. Sugestão de progressão e recuperação são funções puras parametrizadas pela política do programa. A aplicação sugere e pede confirmação; jamais reescreve prescrição ou carga automaticamente.
 
+A geração opcional por IA existe somente no planejamento pessoal. O Worker envia um contexto mínimo à Responses API com `store: false`, exige Structured Output, limita tamanho/tempo da resposta e valida novamente o resultado com Zod. O modelo não recebe ferramentas ou acesso ao D1. A resposta preenche o construtor editável já existente; apenas uma segunda ação explícita do usuário cria o ciclo pelo mesmo repositório manual. A tabela `ai_workout_generations` registra somente metadados operacionais e tokens para controle de custo, nunca o pedido ou o rascunho.
+
 ## Observabilidade e erros
 
 O Worker gera um `requestId`, registra JSON estruturado com método, rota, status, duração e erro sanitizado. Não registra bodies, credenciais, tokens, notas pessoais ou medidas. Erros esperados retornam código e mensagem segura; inesperados retornam 500 genérico. Logs/traces estão habilitados no Wrangler com amostragem configurada.

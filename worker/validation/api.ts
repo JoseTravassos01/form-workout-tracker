@@ -154,7 +154,7 @@ export const hydrationSettingsSchema = z.object({
   version: versionSchema.nullable(),
 }).strict();
 
-const customExerciseSchema = z.object({
+export const customExerciseSchema = z.object({
   name: z.string().trim().min(2).max(120),
   sets: z.number().int().min(1).max(20),
   repsMin: z.number().int().min(1).max(200),
@@ -168,7 +168,7 @@ const customExerciseSchema = z.object({
   if (value.rirMax < value.rirMin) context.addIssue({ code: "custom", message: "O RIR máximo deve ser igual ou maior que o mínimo.", path: ["rirMax"] });
 });
 
-const customTrainingDaySchema = z.object({
+export const customTrainingDaySchema = z.object({
   weekday: z.number().int().min(1).max(7),
   name: z.string().trim().min(2).max(120),
   exercises: z.array(customExerciseSchema).min(1).max(12),
@@ -184,3 +184,43 @@ export const customProgramSchema = z.object({
   const weekdays = value.days.map((day) => day.weekday);
   if (new Set(weekdays).size !== weekdays.length) context.addIssue({ code: "custom", message: "Escolha cada dia da semana apenas uma vez.", path: ["days"] });
 });
+
+export const aiWorkoutGenerationSchema = z.object({
+  prompt: z.string().trim().min(20).max(3000),
+  durationWeeks: z.union([z.literal(4), z.literal(12)]),
+  startDate: isoDateSchema,
+}).strict();
+
+const aiExerciseSchema = customExerciseSchema.safeExtend({
+  sets: z.number().int().min(1).max(8),
+  repsMax: z.number().int().min(1).max(100),
+  rirMax: z.number().int().min(0).max(5),
+  restSeconds: z.number().int().min(30).max(300),
+  notes: z.string().max(500).default(""),
+});
+
+const aiTrainingDaySchema = z.object({
+  weekday: z.number().int().min(1).max(7),
+  name: z.string().trim().min(2).max(120),
+  exercises: z.array(aiExerciseSchema).min(1).max(12),
+}).strict();
+
+export const aiWorkoutPlanSchema = z.object({
+  name: z.string().trim().min(3).max(120),
+  summary: z.string().trim().min(10).max(1000),
+  warnings: z.array(z.string().trim().min(3).max(300)).max(6),
+  days: z.array(aiTrainingDaySchema).min(1).max(7),
+}).strict().superRefine((value, context) => {
+  const weekdays = value.days.map((day) => day.weekday);
+  if (new Set(weekdays).size !== weekdays.length) {
+    context.addIssue({ code: "custom", message: "A IA repetiu um dia da semana.", path: ["days"] });
+  }
+  for (const [dayIndex, day] of value.days.entries()) {
+    const names = day.exercises.map((exercise) => exercise.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR"));
+    if (new Set(names).size !== names.length) {
+      context.addIssue({ code: "custom", message: "A IA repetiu um exercício no mesmo treino.", path: ["days", dayIndex, "exercises"] });
+    }
+  }
+});
+
+export type AiWorkoutPlan = z.infer<typeof aiWorkoutPlanSchema>;

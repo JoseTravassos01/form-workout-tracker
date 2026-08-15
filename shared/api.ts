@@ -154,3 +154,39 @@ export interface StrengthProgressDto extends ExerciseHistoryDto {
   exercises: Array<{ id: string; name: string }>;
   selectedExerciseId: string;
 }
+
+export interface CustomExerciseDraftDto {
+  name: string;
+  sets: number;
+  repsMin: number;
+  repsMax: number;
+  rirMin: number;
+  rirMax: number;
+  restSeconds: number;
+  notes: string;
+}
+
+export interface CustomTrainingDayDraftDto {
+  weekday: number;
+  name: string;
+  exercises: CustomExerciseDraftDto[];
+}
+
+export interface AiWorkoutStatusDto {
+  available: boolean;
+  model: string;
+  dailyLimit: number;
+  remainingToday: number;
+}
+
+export interface AiWorkoutDraftDto {
+  generationId: string;
+  model: string;
+  durationWeeks: 4 | 12;
+  startDate: string;
+  name: string;
+  summary: string;
+  warnings: string[];
+  days: CustomTrainingDayDraftDto[];
+  usage: { inputTokens: number; outputTokens: number };
+}

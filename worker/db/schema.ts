@@ -533,6 +533,28 @@ export const hydrationLogs = sqliteTable(
   ],
 );
 
+export const aiWorkoutGenerations = sqliteTable(
+  "ai_workout_generations",
+  {
+    id: text("id").primaryKey(),
+    athleteProfileId: text("athlete_profile_id").notNull().references(() => athleteProfiles.id, { onDelete: "cascade" }),
+    model: text("model").notNull(),
+    durationWeeks: integer("duration_weeks").notNull(),
+    promptLength: integer("prompt_length").notNull(),
+    status: text("status").notNull(),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    errorCode: text("error_code"),
+    createdAt: text("created_at").notNull(),
+    completedAt: text("completed_at"),
+  },
+  (table) => [
+    index("ai_workout_generations_profile_created_idx").on(table.athleteProfileId, table.createdAt),
+    check("ai_workout_generations_duration", sql`${table.durationWeeks} IN (4,12)`),
+    check("ai_workout_generations_status", sql`${table.status} IN ('pending','completed','failed')`),
+  ],
+);
+
 export const recoveryCheckins = sqliteTable(
   "recovery_checkins",
   {

@@ -1,4 +1,5 @@
 export type SecretBindings = {
+  OPENAI_API_KEY?: string;
   SEED_SECRET?: string;
   MALE_USERNAME?: string;
   MALE_PASSWORD?: string;
@@ -10,7 +11,12 @@ export type SecretBindings = {
   FEMALE_PROGRAM_START_DATE?: string;
 };
 
-export type AppBindings = Env & SecretBindings;
+export type AiBindings = {
+  OPENAI_MODEL?: string;
+  AI_DAILY_GENERATION_LIMIT?: string;
+};
+
+export type AppBindings = Env & SecretBindings & AiBindings;
 
 export type AuthenticatedVariables = {
   requestId: string;
