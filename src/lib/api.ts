@@ -33,3 +33,7 @@ export async function apiMutation<T>(path: string, method: "POST" | "PATCH" | "D
     throw error;
   }
 }
+
+export async function apiFormMutation<T>(path: string, form: FormData): Promise<T> {
+  return parseResponse<T>(await fetch(path, { method: "POST", body: form, credentials: "same-origin" }));
+}

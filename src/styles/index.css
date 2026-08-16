@@ -327,10 +327,27 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .ai-workout-heading p,.ai-draft-summary p { margin:0; color:var(--muted); line-height:1.55; }
 .ai-workout-card > label { display:flex; flex-direction:column; gap:7px; color:var(--muted); font-size:10px; font-weight:750; }
 .ai-workout-card textarea { width:100%; resize:vertical; line-height:1.5; }
+.ai-pdf-upload { padding:13px; border:1px dashed color-mix(in srgb,var(--accent) 40%,var(--border)); border-radius:12px; background:color-mix(in srgb,var(--accent) 4%,var(--surface)); }
+.ai-pdf-upload > div { display:flex; align-items:center; gap:10px; }
+.ai-pdf-upload > div > svg { width:20px; color:var(--accent); flex:0 0 20px; }
+.ai-pdf-upload > div > span { display:flex; flex:1; flex-direction:column; gap:2px; }
+.ai-pdf-upload strong { font-size:11px; }
+.ai-pdf-upload small { color:var(--subtle); font-size:9px; }
+.ai-pdf-picker { min-height:36px; padding:0 11px; display:flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:9px; background:var(--surface-2); color:var(--text); font-size:9px; font-weight:850; cursor:pointer; }
+.ai-pdf-picker svg { width:15px; }
+.ai-pdf-picker input { display:none; }
+.ai-pdf-upload ul { margin:11px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; list-style:none; }
+.ai-pdf-upload li { padding:7px 9px; display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid var(--border-soft); border-radius:9px; background:var(--surface); }
+.ai-pdf-upload li > span { min-width:0; display:flex; align-items:center; gap:7px; font-size:10px; }
+.ai-pdf-upload li > span > svg { width:14px; flex:0 0 14px; color:var(--accent); }
+.ai-pdf-upload li > span small { margin-left:3px; white-space:nowrap; }
+.ai-pdf-upload li button { width:28px; height:28px; display:grid; place-items:center; border:0; background:transparent; color:var(--muted); cursor:pointer; }
+.ai-pdf-upload li button svg { width:15px; }
 .ai-workout-privacy { display:flex; align-items:flex-start; gap:8px; color:var(--subtle); font-size:9px; line-height:1.5; }
 .ai-workout-privacy svg { width:16px; height:16px; flex:0 0 16px; color:var(--accent); }
 .ai-workout-actions { display:flex; justify-content:space-between; align-items:center; gap:14px; }
 .ai-workout-actions small { color:var(--subtle); }
+.ai-workout-buttons { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
 .ai-draft-summary { padding:20px; display:flex; flex-direction:column; gap:13px; border-left:3px solid var(--accent); }
 .ai-draft-summary > div:first-child { display:flex; align-items:center; gap:10px; }
 .ai-draft-summary > div:first-child > svg { color:var(--accent); }
@@ -379,7 +396,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .ai-workout-heading { gap:11px; }
   .ai-workout-heading > span { width:38px; height:38px; flex-basis:38px; }
   .ai-workout-actions { align-items:stretch; flex-direction:column; }
+  .ai-workout-buttons { flex-direction:column; }
   .ai-workout-actions .button { width:100%; justify-content:center; }
+  .ai-pdf-upload > div { align-items:flex-start; flex-wrap:wrap; }
+  .ai-pdf-picker { width:100%; justify-content:center; }
   .custom-exercise-grid { grid-template-columns:repeat(2,1fr); }
   .custom-program-form { padding:14px; }
   .custom-day { padding:12px; }

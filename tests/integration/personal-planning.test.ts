@@ -1,5 +1,6 @@
 import { env, exports } from "cloudflare:workers";
 import { beforeAll, describe, expect, it } from "vitest";
+import { AiWorkoutRepository, type AiGenerationMode } from "../../worker/repositories/ai-workout-repository";
 import { TrainingService } from "../../worker/services/training-service";
 
 const origin = "http://gym.test";
@@ -40,6 +41,41 @@ describe("planejamento pessoal e hidratação", () => {
     });
     expect(generated.status).toBe(503);
     expect(await env.DB.prepare("SELECT COUNT(*) count FROM ai_workout_generations").first<number>("count")).toBe(0);
+  });
+
+  it("cobra cinco chances por geração com PDF e limita esse modo a duas vezes", async () => {
+    const profileId = "athlete:male:initial";
+    const cookie = await login(env.MALE_USERNAME, env.MALE_PASSWORD);
+    const repository = new AiWorkoutRepository(env.DB);
+    await env.DB.prepare("DELETE FROM ai_workout_generations WHERE athlete_profile_id=?").bind(profileId).run();
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const reserve = (mode: AiGenerationMode, index: number, limit = 10) => repository.reserveGeneration({
+      id: crypto.randomUUID(),
+      profileId,
+      model: "deepseek-test",
+      durationWeeks: 4,
+      promptLength: 50,
+      mode,
+      quotaCost: mode === "pdf" ? 5 : 1,
+      documentCount: mode === "pdf" ? 1 : 0,
+      documentTextLength: mode === "pdf" ? 100 : 0,
+      createdAt: new Date(Date.now() + index).toISOString(),
+      since,
+      limit,
+      pdfLimit: 2,
+    });
+
+    expect(await reserve("pdf", 1)).toBe(true);
+    const status = await request("/api/program/ai/status", { headers: { cookie } }).then((response) => response.json() as Promise<{ remainingToday: number; pdfUsesToday: number; pdfRemainingToday: number; pdfGenerationCost: number }>);
+    expect(status).toMatchObject({ remainingToday: 5, pdfUsesToday: 1, pdfRemainingToday: 1, pdfGenerationCost: 5 });
+    for (let index = 0; index < 5; index += 1) expect(await reserve("text", index + 2)).toBe(true);
+    expect(await reserve("text", 20)).toBe(false);
+
+    await env.DB.prepare("DELETE FROM ai_workout_generations WHERE athlete_profile_id=?").bind(profileId).run();
+    expect(await reserve("pdf", 30, 50)).toBe(true);
+    expect(await reserve("pdf", 31, 50)).toBe(true);
+    expect(await reserve("pdf", 32, 50)).toBe(false);
+    await env.DB.prepare("DELETE FROM ai_workout_generations WHERE athlete_profile_id=?").bind(profileId).run();
   });
 
   it("registra água, preserva isolamento e atualiza lembrete com controle de versão", async () => {

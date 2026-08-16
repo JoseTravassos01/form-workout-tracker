@@ -1,9 +1,9 @@
-import { Bot, CalendarRange, Dumbbell, Plus, Save, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
+import { Bot, CalendarRange, Dumbbell, FileText, Plus, Save, ShieldCheck, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { useState } from "react";
 import type { AiWorkoutDraftDto, AiWorkoutStatusDto, CustomExerciseDraftDto, CustomTrainingDayDraftDto } from "../../../shared/api";
 import { useToast } from "../../app/ToastProvider";
 import { Button, Card, PageHeader, Skeleton } from "../../components/ui";
-import { apiMutation } from "../../lib/api";
+import { apiFormMutation, apiMutation } from "../../lib/api";
 import { useApi } from "../../lib/use-api";
 
 type ExerciseDraft = CustomExerciseDraftDto;
@@ -11,6 +11,8 @@ type DayDraft = CustomTrainingDayDraftDto;
 interface CustomProgramsDto { programs: Array<{ id: string; programId: string; name: string; durationWeeks: number; startDate: string; endDate: string; active: boolean; version: number; dayCount: number }> }
 
 const weekdays = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
+const maxPdfFiles = 3;
+const maxPdfFileBytes = 5 * 1024 * 1024;
 const blankExercise = (): ExerciseDraft => ({ name: "", sets: 3, repsMin: 8, repsMax: 12, rirMin: 1, rirMax: 2, restSeconds: 120, notes: "" });
 
 export function CustomProgramPage() {
@@ -24,23 +26,57 @@ export function CustomProgramPage() {
   const [saving, setSaving] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiDraft, setAiDraft] = useState<AiWorkoutDraftDto | null>(null);
-  const [generating, setGenerating] = useState(false);
+  const [pdfFiles, setPdfFiles] = useState<File[]>([]);
+  const [generatingMode, setGeneratingMode] = useState<"text" | "pdf" | null>(null);
 
   const updateDay = (index: number, patch: Partial<DayDraft>) => setDays((current) => current.map((day, itemIndex) => itemIndex === index ? { ...day, ...patch } : day));
   const updateExercise = (dayIndex: number, exerciseIndex: number, patch: Partial<ExerciseDraft>) => setDays((current) => current.map((day, itemIndex) => itemIndex !== dayIndex ? day : { ...day, exercises: day.exercises.map((exercise, index) => index === exerciseIndex ? { ...exercise, ...patch } : exercise) }));
   const valid = name.trim().length >= 3 && days.length > 0 && new Set(days.map((day) => day.weekday)).size === days.length && days.every((day) => day.name.trim().length >= 2 && day.exercises.length > 0 && day.exercises.every((exercise) => exercise.name.trim().length >= 2 && exercise.repsMax >= exercise.repsMin && exercise.rirMax >= exercise.rirMin));
 
+  const applyAiDraft = (draft: AiWorkoutDraftDto) => {
+    setName(draft.name);
+    setDays(draft.days);
+    setAiDraft(draft);
+  };
+
   const generateWithAi = async () => {
-    setGenerating(true);
+    setGeneratingMode("text");
     try {
       const draft = await apiMutation<AiWorkoutDraftDto>("/api/program/ai/generate", "POST", { prompt: aiPrompt.trim(), durationWeeks, startDate });
-      setName(draft.name);
-      setDays(draft.days);
-      setAiDraft(draft);
+      applyAiDraft(draft);
       show("Rascunho criado. Revise e edite antes de salvar no calendário.", "success");
       await refreshAiStatus();
     } catch (error) { show(error instanceof Error ? error.message : "Não foi possível gerar o treino.", "error"); }
-    finally { setGenerating(false); }
+    finally { setGeneratingMode(null); }
+  };
+
+  const addPdfFiles = (selected: FileList | null) => {
+    if (!selected) return;
+    const candidates = Array.from(selected);
+    const invalid = candidates.find((file) => !file.name.toLocaleLowerCase("pt-BR").endsWith(".pdf") || file.size < 1 || file.size > maxPdfFileBytes);
+    if (invalid) {
+      show("Use somente PDFs de até 5 MB cada.", "error");
+      return;
+    }
+    const combined = [...pdfFiles, ...candidates].filter((file, index, files) => files.findIndex((item) => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified) === index);
+    if (combined.length > maxPdfFiles) show("Você pode adicionar no máximo 3 PDFs.", "error");
+    setPdfFiles(combined.slice(0, maxPdfFiles));
+  };
+
+  const generateWithPdf = async () => {
+    setGeneratingMode("pdf");
+    try {
+      const form = new FormData();
+      form.set("prompt", aiPrompt.trim());
+      form.set("durationWeeks", String(durationWeeks));
+      form.set("startDate", startDate);
+      for (const file of pdfFiles) form.append("pdfs", file, file.name);
+      const draft = await apiFormMutation<AiWorkoutDraftDto>("/api/program/ai/generate-from-pdf", form);
+      applyAiDraft(draft);
+      show(draft.pdfContent?.truncated ? "Rascunho criado. Parte do conteúdo foi limitada para processamento seguro." : "Rascunho criado usando o conteúdo adicionado.", "success");
+      await refreshAiStatus();
+    } catch (error) { show(error instanceof Error ? error.message : "Não foi possível usar os PDFs.", "error"); }
+    finally { setGeneratingMode(null); }
   };
 
   const create = async () => {
@@ -68,10 +104,14 @@ export function CustomProgramPage() {
     <Card className="ai-workout-card">
       <div className="ai-workout-heading"><span><Bot /></span><div><span className="eyebrow">ASSISTENTE DE TREINO</span><h2>Montar com inteligência artificial</h2><p>Descreva objetivo, dias disponíveis, preferências e limitações. A IA prepara um rascunho editável; nada é salvo automaticamente.</p></div></div>
       <label>Como você quer treinar?<textarea value={aiPrompt} maxLength={3000} rows={5} onChange={(event) => setAiPrompt(event.target.value)} placeholder="Ex.: Quero hipertrofia 4 vezes por semana, com prioridade em costas e pernas. Tenho 60 minutos por treino e prefiro máquinas..." /></label>
-      <div className="ai-workout-privacy"><ShieldCheck /><span>São enviados somente este pedido, o programa atual e um resumo das performances recentes — sem nome, medidas ou anotações pessoais.</span></div>
+      <div className="ai-pdf-upload">
+        <div><FileText /><span><strong>Conteúdo em PDF</strong><small>Até 3 arquivos · 5 MB cada · PDFs com texto selecionável</small></span><label className="ai-pdf-picker"><Upload /> ADICIONAR PDF<input type="file" accept=".pdf,application/pdf" multiple onChange={(event) => { addPdfFiles(event.target.files); event.target.value = ""; }} /></label></div>
+        {pdfFiles.length > 0 && <ul>{pdfFiles.map((file) => <li key={`${file.name}-${file.size}-${file.lastModified}`}><span><FileText />{file.name}<small>{(file.size / 1024 / 1024).toFixed(1)} MB</small></span><button type="button" aria-label={`Remover ${file.name}`} onClick={() => setPdfFiles((current) => current.filter((item) => item !== file))}><X /></button></li>)}</ul>}
+      </div>
+      <div className="ai-workout-privacy"><ShieldCheck /><span>O texto dos PDFs só é enviado à DeepSeek quando você usa o botão de conteúdo adicionado. Os arquivos não são armazenados; nome, medidas e anotações pessoais continuam fora do envio.</span></div>
       <div className="ai-workout-actions">
-        <small>{aiStatusLoading ? "Verificando disponibilidade…" : aiStatusError ? "Não foi possível verificar a IA. Confirme a migration e a configuração." : aiStatus?.available ? `DeepSeek · ${aiStatus.model} · ${aiStatus.remainingToday} de ${aiStatus.dailyLimit} rascunhos disponíveis` : "Adicione DEEPSEEK_API_KEY aos secrets para habilitar."}</small>
-        <Button type="button" loading={generating} disabled={aiStatusLoading || !aiStatus?.available || aiStatus.remainingToday < 1 || aiPrompt.trim().length < 20} onClick={() => void generateWithAi()}><Sparkles /> GERAR RASCUNHO</Button>
+        <small>{aiStatusLoading ? "Verificando disponibilidade…" : aiStatusError ? "Não foi possível verificar a IA. Confirme a migration e a configuração." : aiStatus?.available ? `DeepSeek · ${aiStatus.model} · ${aiStatus.remainingToday} de ${aiStatus.dailyLimit} chances · PDF ${aiStatus.pdfUsesToday}/${aiStatus.pdfDailyLimit} (custa ${aiStatus.pdfGenerationCost})` : "Adicione DEEPSEEK_API_KEY aos secrets para habilitar."}</small>
+        <div className="ai-workout-buttons"><Button type="button" variant="secondary" loading={generatingMode === "pdf"} disabled={generatingMode !== null || aiStatusLoading || !aiStatus?.available || aiStatus.remainingToday < (aiStatus.pdfGenerationCost ?? 5) || aiStatus.pdfRemainingToday < 1 || pdfFiles.length < 1} onClick={() => void generateWithPdf()}><FileText /> USAR CONTEÚDO ADICIONADO</Button><Button type="button" loading={generatingMode === "text"} disabled={generatingMode !== null || aiStatusLoading || !aiStatus?.available || aiStatus.remainingToday < 1 || aiPrompt.trim().length < 20} onClick={() => void generateWithAi()}><Sparkles /> GERAR RASCUNHO</Button></div>
       </div>
     </Card>
     {aiDraft && <Card className="ai-draft-summary">

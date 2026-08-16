@@ -37,6 +37,13 @@ export interface AiPlanningContext {
   canonicalExercises: AiCanonicalExercise[];
 }
 
+export type AiGenerationMode = "text" | "pdf";
+
+export interface AiQuotaUsage {
+  quotaUsed: number;
+  pdfUses: number;
+}
+
 interface ProfileRow {
   sex: "male" | "female";
   programName: string;
@@ -90,9 +97,12 @@ export class AiWorkoutRepository {
     };
   }
 
-  async countSince(profileId: string, since: string): Promise<number> {
-    return Number(await this.database.prepare(`SELECT COUNT(*) count FROM ai_workout_generations
-      WHERE athlete_profile_id=? AND created_at>=?`).bind(profileId, since).first<number>("count") ?? 0);
+  async usageSince(profileId: string, since: string): Promise<AiQuotaUsage> {
+    const usage = await this.database.prepare(`SELECT COALESCE(SUM(quota_cost),0) quotaUsed,
+      COALESCE(SUM(CASE WHEN generation_mode='pdf' THEN 1 ELSE 0 END),0) pdfUses
+      FROM ai_workout_generations WHERE athlete_profile_id=? AND created_at>=?`)
+      .bind(profileId, since).first<{ quotaUsed: number; pdfUses: number }>();
+    return { quotaUsed: Number(usage?.quotaUsed ?? 0), pdfUses: Number(usage?.pdfUses ?? 0) };
   }
 
   async reserveGeneration(input: {
@@ -101,16 +111,23 @@ export class AiWorkoutRepository {
     model: string;
     durationWeeks: 4 | 12;
     promptLength: number;
+    mode: AiGenerationMode;
+    quotaCost: 1 | 5;
+    documentCount: number;
+    documentTextLength: number;
     createdAt: string;
     since: string;
     limit: number;
+    pdfLimit: number;
   }): Promise<boolean> {
     const result = await this.database.prepare(`INSERT INTO ai_workout_generations
-      (id,athlete_profile_id,model,duration_weeks,prompt_length,status,created_at)
-      SELECT ?,?,?,?,?,'pending',?
-      WHERE (SELECT COUNT(*) FROM ai_workout_generations WHERE athlete_profile_id=? AND created_at>=?) < ?`)
-      .bind(input.id, input.profileId, input.model, input.durationWeeks, input.promptLength, input.createdAt,
-        input.profileId, input.since, input.limit).run();
+      (id,athlete_profile_id,model,duration_weeks,prompt_length,generation_mode,quota_cost,document_count,document_text_length,status,created_at)
+      SELECT ?,?,?,?,?,?,?,?,?,'pending',?
+      WHERE (SELECT COALESCE(SUM(quota_cost),0) FROM ai_workout_generations WHERE athlete_profile_id=? AND created_at>=?) + ? <= ?
+        AND (?='text' OR (SELECT COUNT(*) FROM ai_workout_generations WHERE athlete_profile_id=? AND generation_mode='pdf' AND created_at>=?) < ?)`)
+      .bind(input.id, input.profileId, input.model, input.durationWeeks, input.promptLength, input.mode, input.quotaCost,
+        input.documentCount, input.documentTextLength, input.createdAt, input.profileId, input.since, input.quotaCost,
+        input.limit, input.mode, input.profileId, input.since, input.pdfLimit).run();
     return (result.meta.changes ?? 0) === 1;
   }
 

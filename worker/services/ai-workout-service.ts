@@ -1,13 +1,18 @@
 import { HttpError } from "../lib/http-error";
-import { AiWorkoutRepository } from "../repositories/ai-workout-repository";
+import { AiWorkoutRepository, type AiGenerationMode } from "../repositories/ai-workout-repository";
 import type { AppBindings } from "../types";
 import { AiWorkoutProviderError, requestWorkoutPlan } from "./deepseek-workout-client";
+import { MAX_PDF_TEXT_LENGTH, type PdfReferenceDocument } from "./pdf-content-service";
 
 interface GenerationInput {
   prompt: string;
   durationWeeks: 4 | 12;
   startDate: string;
 }
+
+const PDF_DAILY_LIMIT = 2;
+const PDF_GENERATION_COST = 5;
+const DEFAULT_PDF_PROMPT = "Crie um ciclo de treino usando os documentos adicionados como referência principal.";
 
 function dailyLimit(bindings: AppBindings): number {
   return Math.min(50, Math.max(1, Number(bindings.AI_DAILY_GENERATION_LIMIT) || 10));
@@ -31,17 +36,38 @@ export class AiWorkoutService {
   async status(profileId: string) {
     const now = new Date();
     const limit = dailyLimit(this.bindings);
-    const used = await this.repository.countSince(profileId, sinceYesterday(now));
+    const usage = await this.repository.usageSince(profileId, sinceYesterday(now));
+    const remainingToday = Math.max(0, limit - usage.quotaUsed);
     return {
       available: Boolean(this.bindings.DEEPSEEK_API_KEY),
       model: modelName(this.bindings),
       dailyLimit: limit,
-      remainingToday: Math.max(0, limit - used),
+      remainingToday,
+      pdfDailyLimit: PDF_DAILY_LIMIT,
+      pdfUsesToday: usage.pdfUses,
+      pdfRemainingToday: Math.max(0, Math.min(PDF_DAILY_LIMIT - usage.pdfUses, Math.floor(remainingToday / PDF_GENERATION_COST))),
+      pdfGenerationCost: PDF_GENERATION_COST,
     };
   }
 
   async generate(profileId: string, input: GenerationInput) {
+    return this.generateInternal(profileId, input, "text", []);
+  }
+
+  async generateFromPdf(profileId: string, input: GenerationInput, documents: PdfReferenceDocument[]) {
+    if (documents.length < 1 || documents.length > 3) throw new HttpError(422, "PDF_FILE_LIMIT", "Adicione entre 1 e 3 arquivos PDF.");
+    const documentTextLength = documents.reduce((total, document) => total + document.text.length, 0);
+    if (documentTextLength < 1 || documentTextLength > MAX_PDF_TEXT_LENGTH) throw new HttpError(422, "PDF_TEXT_LIMIT", "O conteúdo extraído dos PDFs ultrapassa o limite permitido.");
+    return this.generateInternal(profileId, { ...input, prompt: input.prompt.trim() || DEFAULT_PDF_PROMPT }, "pdf", documents);
+  }
+
+  ensureConfigured(): void {
+    if (!this.bindings.DEEPSEEK_API_KEY) throw new HttpError(503, "AI_NOT_CONFIGURED", "A geração por IA ainda não foi configurada neste ambiente.");
+  }
+
+  private async generateInternal(profileId: string, input: GenerationInput, mode: AiGenerationMode, documents: PdfReferenceDocument[]) {
     const apiKey = this.bindings.DEEPSEEK_API_KEY;
+    this.ensureConfigured();
     if (!apiKey) throw new HttpError(503, "AI_NOT_CONFIGURED", "A geração por IA ainda não foi configurada neste ambiente.");
 
     const context = await this.repository.getPlanningContext(profileId);
@@ -50,20 +76,34 @@ export class AiWorkoutService {
     const now = new Date();
     const generationId = crypto.randomUUID();
     const model = modelName(this.bindings);
+    const quotaCost = mode === "pdf" ? PDF_GENERATION_COST : 1;
+    const documentTextLength = documents.reduce((total, document) => total + document.text.length, 0);
     const reserved = await this.repository.reserveGeneration({
       id: generationId,
       profileId,
       model,
       durationWeeks: input.durationWeeks,
       promptLength: input.prompt.length,
+      mode,
+      quotaCost,
+      documentCount: documents.length,
+      documentTextLength,
       createdAt: now.toISOString(),
       since: sinceYesterday(now),
       limit: dailyLimit(this.bindings),
+      pdfLimit: PDF_DAILY_LIMIT,
     });
-    if (!reserved) throw new HttpError(429, "AI_DAILY_LIMIT", "O limite diário de rascunhos por IA foi atingido. Tente novamente mais tarde.");
+    if (!reserved) {
+      if (mode === "pdf") {
+        const usage = await this.repository.usageSince(profileId, sinceYesterday(now));
+        if (usage.pdfUses >= PDF_DAILY_LIMIT) throw new HttpError(429, "AI_PDF_DAILY_LIMIT", "O limite de 2 gerações com PDF nas últimas 24 horas foi atingido.");
+        throw new HttpError(429, "AI_PDF_QUOTA", "São necessárias 5 chances disponíveis para usar o conteúdo dos PDFs.");
+      }
+      throw new HttpError(429, "AI_DAILY_LIMIT", "O limite diário de rascunhos por IA foi atingido. Tente novamente mais tarde.");
+    }
 
     try {
-      const generated = await requestWorkoutPlan({ apiKey, model, context, ...input });
+      const generated = await requestWorkoutPlan({ apiKey, model, context, referenceDocuments: documents, ...input });
       await this.repository.completeGeneration(generationId, profileId, generated.inputTokens, generated.outputTokens, new Date().toISOString());
       return {
         generationId,
