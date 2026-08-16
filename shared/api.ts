@@ -177,6 +177,10 @@ export interface AiWorkoutStatusDto {
   model: string;
   dailyLimit: number;
   remainingToday: number;
+  pdfDailyLimit: number;
+  pdfUsesToday: number;
+  pdfRemainingToday: number;
+  pdfGenerationCost: number;
 }
 
 export interface AiWorkoutDraftDto {
@@ -189,4 +193,5 @@ export interface AiWorkoutDraftDto {
   warnings: string[];
   days: CustomTrainingDayDraftDto[];
   usage: { inputTokens: number; outputTokens: number };
+  pdfContent?: { documentCount: number; pageCount: number; textLength: number; truncated: boolean };
 }

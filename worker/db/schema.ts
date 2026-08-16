@@ -541,6 +541,10 @@ export const aiWorkoutGenerations = sqliteTable(
     model: text("model").notNull(),
     durationWeeks: integer("duration_weeks").notNull(),
     promptLength: integer("prompt_length").notNull(),
+    generationMode: text("generation_mode").notNull().default("text"),
+    quotaCost: integer("quota_cost").notNull().default(1),
+    documentCount: integer("document_count").notNull().default(0),
+    documentTextLength: integer("document_text_length").notNull().default(0),
     status: text("status").notNull(),
     inputTokens: integer("input_tokens"),
     outputTokens: integer("output_tokens"),
@@ -550,7 +554,12 @@ export const aiWorkoutGenerations = sqliteTable(
   },
   (table) => [
     index("ai_workout_generations_profile_created_idx").on(table.athleteProfileId, table.createdAt),
+    index("ai_workout_generations_profile_mode_created_idx").on(table.athleteProfileId, table.generationMode, table.createdAt),
     check("ai_workout_generations_duration", sql`${table.durationWeeks} IN (4,12)`),
+    check("ai_workout_generations_mode", sql`${table.generationMode} IN ('text','pdf')`),
+    check("ai_workout_generations_quota_cost", sql`${table.quotaCost} IN (1,5)`),
+    check("ai_workout_generations_document_count", sql`${table.documentCount} BETWEEN 0 AND 3`),
+    check("ai_workout_generations_document_text_length", sql`${table.documentTextLength} BETWEEN 0 AND 60000`),
     check("ai_workout_generations_status", sql`${table.status} IN ('pending','completed','failed')`),
   ],
 );

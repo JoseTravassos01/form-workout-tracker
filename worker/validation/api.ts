@@ -191,6 +191,12 @@ export const aiWorkoutGenerationSchema = z.object({
   startDate: isoDateSchema,
 }).strict();
 
+export const aiWorkoutPdfGenerationSchema = z.object({
+  prompt: z.string().trim().max(3000).default(""),
+  durationWeeks: z.union([z.literal(4), z.literal(12)]),
+  startDate: isoDateSchema,
+}).strict();
+
 const aiExerciseSchema = customExerciseSchema.safeExtend({
   sets: z.number().int().min(1).max(8),
   repsMax: z.number().int().min(1).max(100),

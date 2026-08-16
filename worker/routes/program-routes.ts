@@ -4,9 +4,10 @@ import { HttpError } from "../lib/http-error";
 import { ProgramRepository } from "../repositories/program-repository";
 import { CustomProgramRepository } from "../repositories/custom-program-repository";
 import { AiWorkoutService } from "../services/ai-workout-service";
+import { extractPdfDocuments, readBoundedMultipartFormData } from "../services/pdf-content-service";
 import { TrainingService } from "../services/training-service";
 import type { AppEnvironment } from "../types";
-import { aiWorkoutGenerationSchema, customProgramSchema, programStateSchema } from "../validation/api";
+import { aiWorkoutGenerationSchema, aiWorkoutPdfGenerationSchema, customProgramSchema, programStateSchema } from "../validation/api";
 
 export const programRoutes = new Hono<AppEnvironment>()
   .get("/", async (context) => {
@@ -26,6 +27,23 @@ export const programRoutes = new Hono<AppEnvironment>()
   .post("/ai/generate", zValidator("json", aiWorkoutGenerationSchema), async (context) => {
     const result = await new AiWorkoutService(context.env.DB, context.env).generate(context.get("athleteProfileId"), context.req.valid("json"));
     return context.json(result, 201);
+  })
+  .post("/ai/generate-from-pdf", async (context) => {
+    const service = new AiWorkoutService(context.env.DB, context.env);
+    service.ensureConfigured();
+    const form = await readBoundedMultipartFormData(context.req.raw);
+    const prompt = form.get("prompt");
+    const durationWeeks = form.get("durationWeeks");
+    const startDate = form.get("startDate");
+    const input = aiWorkoutPdfGenerationSchema.safeParse({
+      prompt: typeof prompt === "string" ? prompt : "",
+      durationWeeks: typeof durationWeeks === "string" ? Number(durationWeeks) : Number.NaN,
+      startDate: typeof startDate === "string" ? startDate : "",
+    });
+    if (!input.success) throw new HttpError(422, "INVALID_AI_PDF_REQUEST", "Confira a duração, a data e os arquivos adicionados.");
+    const extracted = await extractPdfDocuments(form.getAll("pdfs"));
+    const result = await service.generateFromPdf(context.get("athleteProfileId"), input.data, extracted.documents);
+    return context.json({ ...result, pdfContent: { documentCount: extracted.documents.length, pageCount: extracted.pageCount, textLength: extracted.textLength, truncated: extracted.truncated } }, 201);
   })
   .delete("/custom/:periodId", async (context) => {
     const version = Number(context.req.query("version"));
